@@ -101,3 +101,67 @@ async def test_unknown_thread_404():
     app = make_app([], [])
     async with app.router.lifespan_context(app), await client_for(app) as c:
         assert (await c.get("/threads/nope")).status_code == 404
+
+
+async def test_rejection_through_api():
+    app, add = paused_app()
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        tid = await new_thread(c)
+        await c.post(f"/threads/{tid}/runs", json={"message": "add a vehicle"})
+        r = await c.post(
+            f"/threads/{tid}/approvals", json={"decisions": {"c1": {"approved": False, "note": "no"}}}
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "completed"
+        assert add.calls == []
+        assert any(d["source"] == "human" for d in body["decisions"])
+
+
+async def test_unknown_id_through_api():
+    app, add = paused_app()
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        tid = await new_thread(c)
+        await c.post(f"/threads/{tid}/runs", json={"message": "add a vehicle"})
+        r = await c.post(
+            f"/threads/{tid}/approvals", json={"decisions": {"bogus": {"approved": True}}}
+        )
+        assert r.status_code == 200
+        assert add.calls == []
+
+
+async def test_concurrent_requests_one_wins():
+    import asyncio
+
+    from langchain_core.tools import StructuredTool
+
+    started, release, calls = asyncio.Event(), asyncio.Event(), []
+
+    async def slow(**kwargs):
+        calls.append(kwargs)
+        started.set()
+        await release.wait()
+        return "added"
+
+    tool = StructuredTool.from_function(
+        coroutine=slow,
+        name="add_vehicle",
+        description="slow",
+        args_schema={"type": "object", "properties": {}, "additionalProperties": True},
+    )
+    app = make_app(
+        [ai_call(("c1", "add_vehicle", {"vin": "X"})), AIMessage("Added.")], [tool], FakeJudge(BAD)
+    )
+    body = {"decisions": {"c1": {"approved": True}}}
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        tid = await new_thread(c)
+        await c.post(f"/threads/{tid}/runs", json={"message": "add"})
+        first = asyncio.create_task(c.post(f"/threads/{tid}/approvals", json=body))
+        await asyncio.wait_for(started.wait(), 5)  # first approval is now in flight
+        second = await c.post(f"/threads/{tid}/approvals", json=body)
+        third = await c.post(f"/threads/{tid}/runs", json={"message": "hi"})
+        release.set()
+        r1 = await first
+    assert (r1.status_code, second.status_code, third.status_code) == (200, 409, 409)
+    assert second.json()["detail"] == "thread busy" and third.json()["detail"] == "thread busy"
+    assert len(calls) == 1

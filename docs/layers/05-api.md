@@ -24,7 +24,12 @@ append after an AI message with unanswered tool calls, which breaks the model's
 message contract and lets a user talk past a pending approval. So `run_turn`
 raises `ThreadBusy` and the API returns 409 with the `pending` list, so the client
 can show what to approve. Likewise approving a thread that is not paused is a 409
-(`NotAwaiting`), which makes a double-submitted approval harmless.
+(`NotAwaiting`), which makes a sequential double-submitted approval harmless.
+
+Concurrent requests are guarded by a per-thread `asyncio.Lock` around check-plus-invoke:
+if it is held, the second request gets 409 `thread busy` (not queued), so two
+simultaneous approvals cannot both run the tool. The lock is per process; with
+several replicas you would need a database lock.
 
 The graph is built once in the lifespan (`app.state.graph`), because it holds the
 MCP sessions and the checkpointer connection. `default_runtime` wires them.

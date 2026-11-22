@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .config import get_settings
-from .runs import NotAwaiting, ThreadBusy, resume, run_turn, thread_view
+from .runs import NotAwaiting, ThreadBusy, ThreadLocked, resume, run_turn, thread_view
 from .runtime import default_runtime
 
 
@@ -55,6 +55,8 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
             return JSONResponse(
                 {"detail": "awaiting approval", "pending": busy.pending}, status_code=409
             )
+        except ThreadLocked:
+            return JSONResponse({"detail": "thread busy"}, status_code=409)
 
     @app.post("/threads/{thread_id}/approvals")
     async def post_approvals(thread_id: str, body: ApprovalsRequest, request: Request):
@@ -63,6 +65,8 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
             return await resume(request.app.state.graph, thread_id, decisions)
         except NotAwaiting:
             raise HTTPException(409, "not awaiting approval")
+        except ThreadLocked:
+            raise HTTPException(409, "thread busy")
 
     @app.get("/threads/{thread_id}")
     async def get_thread(thread_id: str, request: Request):

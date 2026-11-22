@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from langchain_core.messages import HumanMessage
@@ -18,6 +20,28 @@ class ThreadBusy(Exception):
 
 class NotAwaiting(Exception):
     """The thread has no paused run to resume."""
+
+
+class ThreadLocked(Exception):
+    """Another request is already driving this thread."""
+
+
+# Per process only: with several replicas this would need a database lock.
+_locks: dict[str, asyncio.Lock] = {}
+
+
+@asynccontextmanager
+async def _thread_lock(thread_id: str):
+    """Hold the thread for check-plus-invoke; fail at once (no queueing) if it is held."""
+    lock = _locks.setdefault(thread_id, asyncio.Lock())
+    if lock.locked():
+        raise ThreadLocked(thread_id)
+    await lock.acquire()  # a free lock is taken without suspending, so no interleaving
+    try:
+        yield
+    finally:
+        lock.release()
+        _locks.pop(thread_id, None)
 
 
 def serialize(msg) -> dict:
@@ -67,20 +91,22 @@ async def _counts(graph, cfg: dict):
 
 async def run_turn(graph, thread_id: str, message: str, callbacks: list | None = None) -> dict:
     cfg = _cfg(thread_id, callbacks)
-    snap, n_msgs, n_audit = await _counts(graph, cfg)
-    if _awaiting(snap):
-        raise ThreadBusy(_waiting(snap))
-    await graph.ainvoke({"messages": [HumanMessage(message)]}, cfg)
-    return await _finish(graph, cfg, n_msgs, n_audit)
+    async with _thread_lock(thread_id):
+        snap, n_msgs, n_audit = await _counts(graph, cfg)
+        if _awaiting(snap):
+            raise ThreadBusy(_waiting(snap))
+        await graph.ainvoke({"messages": [HumanMessage(message)]}, cfg)
+        return await _finish(graph, cfg, n_msgs, n_audit)
 
 
 async def resume(graph, thread_id: str, decisions: dict, callbacks: list | None = None) -> dict:
     cfg = _cfg(thread_id, callbacks)
-    snap, n_msgs, n_audit = await _counts(graph, cfg)
-    if not _awaiting(snap):
-        raise NotAwaiting(thread_id)
-    await graph.ainvoke(Command(resume=decisions), cfg)
-    return await _finish(graph, cfg, n_msgs, n_audit)
+    async with _thread_lock(thread_id):
+        snap, n_msgs, n_audit = await _counts(graph, cfg)
+        if not _awaiting(snap):
+            raise NotAwaiting(thread_id)
+        await graph.ainvoke(Command(resume=decisions), cfg)
+        return await _finish(graph, cfg, n_msgs, n_audit)
 
 
 async def thread_view(graph, thread_id: str) -> dict:
