@@ -1,0 +1,27 @@
+# Layer 2: MCP bridge
+
+## What it does
+`servers.yaml` lists MCP servers (Streamable HTTP `url`, or stdio `command`). `MCPToolbox`
+opens each in one `AsyncExitStack`, and exposes `.tools` (LangChain `StructuredTool`s) and
+`.info` (`name -> ToolInfo`) for the policy engine. `${VAR}` is expanded in YAML values and a
+relative `cwd` resolves against the YAML file's directory. `servers.local.yaml` runs the
+`../gwmcp` mock instead of the deployed PAS. `claimdocs` is a tiny demo server whose notes
+for `PA-200001-01` carry a planted prompt injection.
+
+## Why it's built this way
+- No `langchain-mcp-adapters`: it needs `mcp<2`, while `litellm` needs `mcp>=2.3`. The bridge is ~100 lines.
+- Annotations feed the policy: `read_only_hint` becomes `ToolInfo.read_only` (default allow),
+  `destructive_hint` becomes `ToolInfo.destructive` (never auto-allowed). Missing annotations
+  mean both False, so the tool falls through to `evaluate`.
+- Fail loudly: a server that won't start raises `ToolboxError` naming the server; duplicate
+  tool names across servers are rejected, since the policy is keyed by name.
+- Tool errors: the coroutine raises `ToolException`; the tool has `handle_tool_error=True`, so the
+  agent sees the error text instead of crashing.
+
+## What surprised us
+- mcp 2.x renamed fields to snake_case: `inputSchema` -> `input_schema`, `isError` -> `is_error`,
+  `readOnlyHint` -> `read_only_hint`, `destructiveHint` -> `destructive_hint`. `annotations` may be None.
+- `streamable_http_client` yields a tuple; use only `streams[0]` and `streams[1]`.
+- Server side, `FastMCP` is now `mcp.server.MCPServer` (`@server.tool(annotations=ToolAnnotations(...))`,
+  `server.run("stdio")`). The lowlevel `Server` still exists (gwmcp uses it).
+- The stdio subprocess needs `os.environ` merged with the spec's env, or `uv`/`python` aren't found.
