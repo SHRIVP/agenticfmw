@@ -38,7 +38,8 @@ function textOf(content) {
 function markdown(text) {
   const node = el("div", "msg-ai");
   if (window.marked && window.DOMPurify) {
-    node.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    // No <img>: an injected reply could otherwise make the browser call out with data.
+    node.innerHTML = DOMPurify.sanitize(marked.parse(text), { FORBID_TAGS: ["img"] });
   } else {
     node.style.whiteSpace = "pre-wrap";
     node.textContent = text;
@@ -235,8 +236,8 @@ function showThinking(extraHuman) {
 }
 
 // ---------- actions ----------
-async function openThread(id, { push = true } = {}) {
-  clearBanner();
+async function openThread(id, { push = true, keepBanner = false } = {}) {
+  if (!keepBanner) clearBanner();
   state.thread = id;
   state.choices = {};
   if (push) history.pushState(null, "", `/?thread=${encodeURIComponent(id)}`);
@@ -290,8 +291,8 @@ async function sendMessage(text) {
     if (status === 409) handleConflict(body);
     else if (status !== 200) banner(`Server error (${status}).`, { error: true });
   } catch { /* banner already shown */ } finally {
+    if (state.thread) await openThread(state.thread, { push: false, keepBanner: true });
     setBusy(false);
-    if (state.thread) await openThread(state.thread, { push: false });
   }
 }
 
@@ -308,8 +309,8 @@ async function submitApprovals(choices) {
     if (status === 409) handleConflict(body);
     else if (status !== 200) banner(`Server error (${status}).`, { error: true });
   } catch { /* banner already shown */ } finally {
+    await openThread(state.thread, { push: false, keepBanner: true });
     setBusy(false);
-    await openThread(state.thread, { push: false });
   }
 }
 

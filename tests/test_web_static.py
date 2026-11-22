@@ -37,3 +37,21 @@ def test_no_anthropic_branding():
 
 def test_page_title():
     assert re.search(r"<title>[^<]*pcagent[^<]*</title>", read("index.html"))
+
+
+def test_markdown_forbids_images():
+    # A prompt-injected reply must not make the browser fetch attacker URLs.
+    js = read("app.js")
+    assert re.search(r"DOMPurify\.sanitize\([^;]*FORBID_TAGS:\s*\[[^\]]*['\"]img['\"]", js)
+
+
+def test_action_refresh_keeps_banner():
+    # After send/approve, the refresh must not wipe the 409/500 banner it just showed,
+    # and the UI stays busy until that refresh is done.
+    js = read("app.js")
+    assert js.count("keepBanner: true") >= 2
+    for fn in ("async function sendMessage", "async function submitApprovals"):
+        body = js[js.index(fn):]
+        body = body[: body.index("\n}\n")]
+        fin = body[body.index("finally"):]
+        assert fin.index("openThread") < fin.index("setBusy(false)"), fn
