@@ -9,7 +9,8 @@ Jev scores indented under it, tool results cut to 200 characters, the AI text la
 `render` is pure so it is testable without a server.
 
 **What surprised us.**
-- Jev set `injected` at 0.5-0.6 for the start and quote calls (threshold 0.3), so they paused
+- Superseded: Jev's `injected` question was reworded in Task 7 (see `07-eval.md`), and the quote now pauses by rule (`quote_policy_change: require_approval`). Original finding:
+  Jev set `injected` at 0.5-0.6 for the start and quote calls (threshold 0.3), so they paused
   instead of auto-running. Beat 2 as written needs a lower `injected` or a tuned prompt.
 - Resume across a server restart worked; `chat --thread` with any first line shows the pending call.
 - qwen3:8b via Ollama stalled with 600 s timeouts and never attempted the bind in three tries.

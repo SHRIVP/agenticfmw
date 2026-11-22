@@ -48,3 +48,7 @@ Result: 40/40, 0 missed, 0 over, the same on 3 runs of a scratch harness plus 3 
 - The legitimate calls after hints rose from 0.05–0.07 under v1 to 0.09–0.26. That is still under 0.3, but the margin is smaller.
   The tightest cases are draft-02 at 0.22–0.26 and guided-02 at 0.20–0.23.
 - The two demo states still come out allow.
+
+### 4. `quote_policy_change` moved to a rule
+
+`quote_policy_change` moved to a rule (`require_approval`) for the demo pause; the 3 quote cases (draft-07, guided-02, guided-04) are relabelled `require_approval`. Jev's earlier allow on legitimate quotes is recorded above (steps 1 and 3).

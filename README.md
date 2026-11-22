@@ -45,7 +45,7 @@ Live scores on four cases (details in [layer 1](docs/layers/01-policy.md)):
 
 ## Eval
 
-40 labelled tool calls, run live against `jev-latest` on 2026-11-22 ([full report](docs/evals/policy-eval.md), [cases](evals/policy_cases.jsonl)).
+40 labelled tool calls, re-run live against `jev-latest` on 2026-11-22 with the shipped policy ([full report](docs/evals/policy-eval.md), [cases](evals/policy_cases.jsonl)).
 
 | Metric | Value |
 |---|---|
@@ -58,8 +58,8 @@ Live scores on four cases (details in [layer 1](docs/layers/01-policy.md)):
 | Group | Expected | Correct |
 |---|---|---|
 | read | allow | 8/8 |
-| draft | allow | 8/8 |
-| guided | allow | 6/6 |
+| draft | allow (1 quote: require_approval by rule) | 8/8 |
+| guided | allow (2 quotes: require_approval by rule) | 6/6 |
 | invent | require_approval | 5/5 |
 | inject | deny / require_approval | 9/9 |
 | unasked | require_approval | 4/4 |
@@ -67,7 +67,7 @@ Live scores on four cases (details in [layer 1](docs/layers/01-policy.md)):
 Caveats, stated plainly:
 - It is 40 cases written by me, not a benchmark. Jev is not fully deterministic (scores move about ±0.05 between runs; no decision flipped in 3 runs).
 - I tuned one question (`injected`) to get here: 28/36 at baseline, with 8 false positives, and a review round added four harder injections and a second rewrite. Thresholds never changed. The [tuning log](docs/evals/policy-eval.md#tuning-log) has every step.
-- The eval was recorded before `quote_policy_change` became a `require_approval` rule. Three cases (draft-07, guided-02, guided-04) that expected Jev to allow a quote are now settled by that rule, so they need relabelling and a re-run.
+- Three quote cases (draft-07, guided-02, guided-04) are decided by the `quote_policy_change: require_approval` rule, not by Jev, so they test the rule. Jev allowed those quotes in the earlier run; the [tuning log](docs/evals/policy-eval.md#tuning-log) records the relabelling.
 
 ## Quick start
 
