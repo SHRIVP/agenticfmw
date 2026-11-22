@@ -28,7 +28,11 @@ It is not a chatbot.
 2. Each tool call gets a decision from rules plus Jev: allow, ask a person, or deny.
 3. Human approval through LangGraph `interrupt()`. Runs survive a restart through
    the Postgres checkpointer.
-4. Tools from MCP servers, with Everywire PAS (`../gwmcp`, mock mode) as the first one.
+4. Tools from MCP servers, with Everywire PAS as the first one. Demo and manual
+   runs use Pushkar's deployed server at `https://gwmcp.ashenlabs.ca/mcp`, over
+   Streamable HTTP, with state kept in Redis: 11 accounts and 12 policies.
+   Tests use the local mock (`../gwmcp`, `GW_MOCK=true`), which resets on every
+   start, so tests never change the shared data.
 5. A FastAPI API for threads, runs and approvals, and a `pcagent chat` CLI on top of it.
 6. Evals: a labelled dataset of policy decisions scored live against Jev, plus
    offline graph tests with a scripted model.
@@ -57,6 +61,12 @@ UI, multi-tenancy, login, real carrier integrations, and RAG over pgvector.
 - `gwmcp` runs as a subprocess in its own environment (it pins `mcp<2`):
   `uv run --project ../gwmcp python server.py` with `GW_MOCK=true`. Tested: it lists
   15 tools and `search_policies` works.
+- The deployed `gwmcp` has no login yet. Whatever the agent does there also shows
+  up in Pushkar's claude.ai connector, because it's shared state. Clean up
+  leftover drafts before recording. The local mock is for anything automated.
+- Streamable HTTP in `mcp` 2.x:
+  `streamable_http_client(url)` yields streams whose first two elements go to
+  `ClientSession(read, write)`. Tested: 15 tools, and `search_policies` works.
 - `gwmcp` lists `bind_policy_change` even though its README says only a person
   should bind. Our policy must deny it.
 - `gwmcp` has no claims or notes tool, so the injection beat needs a source of
@@ -140,8 +150,8 @@ Live results on four cases:
 - `gateway.py`: the model gateway. `ChatLiteLLM(model=PCAGENT_MODEL)`, with
   `anthropic/claude-opus-5-5` as the default. Bedrock and OpenAI are just other
   model strings later.
-- `mcp_bridge.py`: connects to the servers listed in `servers.yaml` over stdio
-  and keeps the sessions open for the life of the app (an `AsyncExitStack`).
+- `mcp_bridge.py`: connects to the servers listed in `servers.yaml`. A server
+  with a `url` uses Streamable HTTP, and one with a `command` uses stdio. It keeps the sessions open for the life of the app (an `AsyncExitStack`).
   It turns each MCP tool into a LangChain `StructuredTool`, using the tool's
   JSON schema as `args_schema`, and into a `ToolInfo` built from its annotations.
   Tool results are joined into text, and `is_error` becomes an error result.
@@ -213,6 +223,7 @@ the Dockerfile details.
 
 ## Decided
 
+- PAS data: the deployed `gwmcp` for demos, and the local mock for tests (Pushkar asked to use his existing data).
 - Injection beat: run it on a weaker local model, labelled on screen (Pushkar
   took the recommendation).
 
