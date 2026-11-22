@@ -21,6 +21,7 @@ from langgraph.graph import END, START, StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
+from . import telemetry
 from .gateway import CORE_PROMPT
 from .policy.engine import Decision, PolicyEngine, ToolInfo
 
@@ -69,7 +70,8 @@ def build_graph(
     by_name = {t.name: t for t in tools}
 
     async def agent(state: AgentState) -> dict:
-        reply = await bound.ainvoke([SystemMessage(system_prompt), *state["messages"]])
+        with telemetry.span("pcagent.node.agent"):
+            reply = await bound.ainvoke([SystemMessage(system_prompt), *state["messages"]])
         return {"messages": [reply]}
 
     async def policy(state: AgentState) -> dict:
@@ -91,6 +93,7 @@ def build_graph(
                     reason = f"policy engine error ({exc.__class__.__name__})"
                     d = Decision(call["id"], call["name"], call.get("args", {}), "require_approval", reason, "fallback")
             pending.append(d.as_dict())
+            telemetry.decision_span(pending[-1], tool)
         return {"pending": pending, "audit": [dict(d) for d in pending]}
 
     def approval(state: AgentState) -> dict:
@@ -132,11 +135,16 @@ def build_graph(
             if d is None or d["action"] != "allow":
                 out.append(_error(call, f"Blocked by policy: {d['reason'] if d else blocked}"))
                 continue
-            try:
-                msg = await by_name[call["name"]].ainvoke({**call, "type": "tool_call"})
-            except Exception as exc:  # ToolException from MCP, or anything else
-                out.append(_error(call, f"Error: {exc}"))
-                continue
+            t = info.get(call["name"])
+            with telemetry.span("pcagent.tool.call", tool=call["name"], pack=getattr(t, "pack", None),
+                                source=getattr(t, "source", None)) as s:
+                try:
+                    msg = await by_name[call["name"]].ainvoke({**call, "type": "tool_call"})
+                except Exception as exc:  # ToolException from MCP, or anything else
+                    telemetry.set_attrs(s, error=True)
+                    out.append(_error(call, f"Error: {exc}"))
+                    continue
+                telemetry.set_attrs(s, error=False)
             out.append(msg)
         return {"messages": out}
 

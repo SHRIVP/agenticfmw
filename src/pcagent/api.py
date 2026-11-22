@@ -12,10 +12,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import telemetry
 from .config import load_config
 from .runs import InterruptedRun, NotAwaiting, ThreadBusy, ThreadLocked, list_threads, resume, run_turn, thread_view
 from .runtime import Runtime, default_runtime
-from .tracing import callbacks
 
 
 WEB_DIR = Path(__file__).with_name("web")
@@ -44,6 +44,7 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
                 rt = Runtime(rt)
             app.state.graph = rt.graph
             app.state.packs = rt.packs
+            app.state.tracing = rt.tracing
             yield
 
     app = FastAPI(title="pcagent", lifespan=lifespan)
@@ -74,7 +75,7 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
     async def post_run(thread_id: str, body: RunRequest, request: Request):
         try:
             return await run_turn(
-                request.app.state.graph, thread_id, body.message, callbacks=callbacks()
+                request.app.state.graph, thread_id, body.message, callbacks=telemetry.llm_callbacks(request.app.state.tracing)
             )
         except ThreadBusy as busy:
             return JSONResponse(
@@ -90,7 +91,7 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
         decisions = {k: v.model_dump() for k, v in body.decisions.items()}
         try:
             return await resume(
-                request.app.state.graph, thread_id, decisions, callbacks=callbacks()
+                request.app.state.graph, thread_id, decisions, callbacks=telemetry.llm_callbacks(request.app.state.tracing)
             )
         except NotAwaiting:
             raise HTTPException(409, "not awaiting approval")

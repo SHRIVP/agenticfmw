@@ -9,6 +9,8 @@ from typing import Any
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
+from . import telemetry
+
 
 class ThreadBusy(Exception):
     """The thread is awaiting approval and cannot take a new message."""
@@ -105,8 +107,11 @@ async def run_turn(graph, thread_id: str, message: str, callbacks: list | None =
             raise ThreadBusy(_waiting(snap))
         if snap.next:  # stopped mid-run, not at the approval interrupt
             raise InterruptedRun(thread_id)
-        await graph.ainvoke({"messages": [HumanMessage(message)]}, cfg)
-        return await _finish(graph, cfg, n_msgs, n_audit)
+        with telemetry.span("pcagent.run", thread_id=thread_id, kind="run") as s:
+            await graph.ainvoke({"messages": [HumanMessage(message)]}, cfg)
+            result = await _finish(graph, cfg, n_msgs, n_audit)
+            telemetry.set_attrs(s, status=result["status"])
+        return result
 
 
 async def resume(graph, thread_id: str, decisions: dict, callbacks: list | None = None) -> dict:
@@ -115,8 +120,11 @@ async def resume(graph, thread_id: str, decisions: dict, callbacks: list | None 
         snap, n_msgs, n_audit = await _counts(graph, cfg)
         if not _awaiting(snap):
             raise NotAwaiting(thread_id)
-        await graph.ainvoke(Command(resume=decisions), cfg)
-        return await _finish(graph, cfg, n_msgs, n_audit)
+        with telemetry.span("pcagent.run", thread_id=thread_id, kind="resume") as s:
+            await graph.ainvoke(Command(resume=decisions), cfg)
+            result = await _finish(graph, cfg, n_msgs, n_audit)
+            telemetry.set_attrs(s, status=result["status"])
+        return result
 
 
 async def thread_view(graph, thread_id: str) -> dict:

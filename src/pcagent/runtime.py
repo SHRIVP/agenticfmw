@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .checkpoint import open_checkpointer
-from .config import AppConfig, load_env
+from . import telemetry
+from .config import AppConfig, TracingConfig, load_env
 from .gateway import compose_prompt, make_model
 from .graph import build_graph
 from .packs.loader import open_packs, resolve_pack
@@ -20,6 +21,7 @@ from .policy.judges import make_judge, thresholds_from
 class Runtime:
     graph: Any
     packs: list[dict] = field(default_factory=list)  # the GET /packs view
+    tracing: TracingConfig = field(default_factory=TracingConfig)
 
 
 def packs_view(packs, info) -> list[dict]:
@@ -45,6 +47,7 @@ def policy_set(config: AppConfig, packs) -> PolicySet:
 @asynccontextmanager
 async def default_runtime(config: AppConfig) -> AsyncIterator[Runtime]:
     load_env()  # explicitly, rather than relying on litellm's import side effect
+    telemetry.setup_tracing(config.tracing)
     packs = [resolve_pack(ref) for ref in config.packs]
     policies = policy_set(config, packs)  # rules errors surface before any server starts
     async with open_packs(packs) as loaded:
@@ -52,4 +55,4 @@ async def default_runtime(config: AppConfig) -> AsyncIterator[Runtime]:
             engine = PolicyEngine(policies, make_judge(config.judge))
             graph = build_graph(make_model(config.model), loaded.tools, loaded.info, engine, saver,
                                 system_prompt=compose_prompt(packs))
-            yield Runtime(graph, packs_view(packs, loaded.info))
+            yield Runtime(graph, packs_view(packs, loaded.info), config.tracing)
