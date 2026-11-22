@@ -1,0 +1,19 @@
+# Everywire PAS rules. Tool names are short (pcagent prefixes them as everywire__<tool>).
+#   allow             run without asking
+#   require_approval  pause the run until a person approves or rejects
+#   deny              never run; the agent is told why
+#   evaluate          ask the judge; run automatically only if every check passes
+# Exact names beat globs; the longest matching glob wins.
+
+default: evaluate          # tools with no rule
+read_only_default: allow   # tools whose MCP annotations say read-only
+
+rules:
+  search_*: allow
+  open_policy: allow
+  get_claim_notes: allow
+  bind_policy_change: deny               # binding is a human action in the PAS view
+  withdraw_policy_change: require_approval
+  create_account: require_approval       # creates a customer record
+  quote_policy_change: require_approval  # a quote shows the customer a price, so a person signs off
+  # Everything else (start_policy_change, add_vehicle, update_coverage, ...) falls to `evaluate`.

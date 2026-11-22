@@ -127,6 +127,9 @@ async def thread_view(graph, thread_id: str) -> dict:
         "messages": [serialize(m) for m in values.get("messages", [])],
         "pending": _waiting(snap),
         "audit": list(values.get("audit", [])),
+        # Tool names without a pack prefix come from before packs (v1): such a thread can't continue.
+        "legacy": any("__" not in c["name"] for m in values.get("messages", [])
+                      for c in (getattr(m, "tool_calls", None) or [])),
     }
 
 

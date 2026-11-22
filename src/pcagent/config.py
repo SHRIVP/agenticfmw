@@ -23,8 +23,6 @@ class Settings(BaseSettings):
 
     model: str = Field("anthropic/claude-opus-5-5", validation_alias="PCAGENT_MODEL")
     database_url: str | None = Field(None, validation_alias="DATABASE_URL")
-    servers_path: Path = Field(Path("servers.yaml"), validation_alias="PCAGENT_SERVERS")
-    policy_path: Path | None = Field(None, validation_alias="PCAGENT_POLICY")
     api_url: str = Field("http://localhost:8000", validation_alias="PCAGENT_API")
 
 
@@ -54,7 +52,7 @@ class AppConfig(BaseModel):
     checkpointer: str | None = None
 
 
-_VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}")
 
 
 def expand_env(value: Any) -> Any:
@@ -62,6 +60,8 @@ def expand_env(value: Any) -> Any:
     if isinstance(value, str):
         def sub(m):
             if m.group(1) not in os.environ:
+                if m.group(2) is not None:  # ${VAR:-default}
+                    return m.group(3)
                 raise ConfigError(f"environment variable {m.group(1)} is not set (used in pcagent config)")
             return os.environ[m.group(1)]
         return _VAR.sub(sub, value)

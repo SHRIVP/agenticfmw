@@ -1,6 +1,0 @@
-servers:
-  gwmcp:
-    url: https://gwmcp.ashenlabs.ca/mcp
-  claimdocs:
-    command: python
-    args: [-m, pcagent.servers.claimdocs]

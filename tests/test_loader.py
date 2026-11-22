@@ -68,7 +68,7 @@ def demo_pack():
 
 def docs_pack(**kw):
     d = Pack("docs", labels={"get_claim_notes": "Read the claim notes"})
-    d.mcp("claimdocs", command=sys.executable, args=["-m", "pcagent.servers.claimdocs"], **kw)
+    d.mcp("claimdocs", command=sys.executable, args=["-m", "pcagent.packs.everywire.claimdocs"], **kw)
     return d
 
 

@@ -1,0 +1,13 @@
+# pcagent configuration. See docs/guide/config.md.
+packs:
+  - use: pcagent.packs.everywire:make_pack
+    settings:
+      gwmcp: {url: https://gwmcp.ashenlabs.ca/mcp}   # deployed demo PAS (mock data, no login)
+model: anthropic/claude-opus-5-5
+judge:
+  type: jev
+rules:                     # global rules: may only tighten (deny | require_approval)
+  "*__bind_*": deny
+tracing:
+  exporter: none
+checkpointer: ${DATABASE_URL:-}   # empty: in-memory

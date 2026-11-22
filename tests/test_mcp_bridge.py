@@ -16,7 +16,7 @@ from pcagent.mcp_bridge import (
 )
 
 CLAIMDOCS = ServerSpec(
-    name="claimdocs", command=sys.executable, args=["-m", "pcagent.servers.claimdocs"]
+    name="claimdocs", command=sys.executable, args=["-m", "pcagent.packs.everywire.claimdocs"]
 )
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -83,16 +83,24 @@ async def test_duplicate_tool_names_rejected():
             pass
 
 
+def _gwmcp_spec(config_name):
+    from pcagent.config import load_config
+    from pcagent.packs.loader import resolve_pack
+    pack = resolve_pack(load_config(ROOT / config_name).packs[0])
+    return [s.spec for s in pack.mcp_sources]
+
+
 @pytest.mark.live
-async def test_gwmcp_local_smoke():
-    async with MCPToolbox(load_servers(ROOT / "servers.local.yaml")) as box:
+async def test_gwmcp_local_smoke(monkeypatch):
+    monkeypatch.chdir(ROOT)
+    async with MCPToolbox(_gwmcp_spec("pcagent.local.yaml")) as box:
         assert "search_policies" in box.info
         assert box.info["bind_policy_change"].destructive is True
 
 
 @pytest.mark.live
 async def test_gwmcp_deployed_smoke():
-    async with MCPToolbox(load_servers(ROOT / "servers.yaml")) as box:
+    async with MCPToolbox(_gwmcp_spec("pcagent.yaml")) as box:
         assert len(box.info) == 15 + 1  # 15 PAS tools + get_claim_notes
         tool = next(t for t in box.tools if t.name == "search_policies")
         out = await tool.ainvoke({"policyNumber": "PA-200001-01"})

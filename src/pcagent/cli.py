@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 import httpx
@@ -45,6 +46,8 @@ def _serve(args) -> None:
 
     from .api import create_app
 
+    if getattr(args, "config", None):
+        os.environ["PCAGENT_CONFIG"] = args.config
     uvicorn.run(create_app(), host=args.host, port=args.port)
 
 
@@ -159,6 +162,7 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("serve")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--config", help="pcagent.yaml to use (default: $PCAGENT_CONFIG or ./pcagent.yaml)")
     s.set_defaults(fn=_serve)
     c = sub.add_parser("chat")
     c.add_argument("--thread")

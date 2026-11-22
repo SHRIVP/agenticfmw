@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 Action = Literal["allow", "require_approval", "deny"]
 RuleAction = Literal["allow", "require_approval", "deny", "evaluate"]
-DEFAULT_POLICY = Path(__file__).with_name("policy.yaml")
+DEFAULT_POLICY = Path(__file__).parents[1] / "packs" / "everywire" / "rules.yaml"  # v1 shim
 
 
 @dataclass

@@ -18,6 +18,13 @@ from pcagent.policy.engine import Policy, PolicyEngine, ToolInfo
 from pcagent.policy.jev import Judgments
 
 GOOD = Judgments(0.97, 0.91, 0.02, 1.0, 1)  # every Jev check passes
+
+# The v1 Everywire rules over unqualified names, so graph/API tests keep their tool names.
+V1_RULES = {
+    "search_*": "allow", "open_policy": "allow", "bind_policy_change": "deny",
+    "withdraw_policy_change": "require_approval", "create_account": "require_approval",
+    "quote_policy_change": "require_approval",
+}
 BAD = Judgments(0.04, 0.94, 0.97, 3.0, 3)   # injected, not asked for, binding
 
 
@@ -84,7 +91,7 @@ def ai_call(*calls):
 def setup(responses, tools, judge=None, saver=None):
     model = ScriptedChatModel(responses=responses)
     info = {t.name: ToolInfo(t.name, description=t.description) for t in tools}
-    engine = PolicyEngine(Policy.load(), judge or FakeJudge(GOOD))
+    engine = PolicyEngine(Policy(rules=dict(V1_RULES)), judge or FakeJudge(GOOD))
     saver = saver or InMemorySaver()
     graph = build_graph(model, tools, info, engine, saver)
     cfg = {"configurable": {"thread_id": str(uuid.uuid4())}}

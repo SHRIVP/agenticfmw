@@ -21,7 +21,7 @@ from langgraph.graph import END, START, StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
-from .gateway import SYSTEM_PROMPT
+from .gateway import CORE_PROMPT
 from .policy.engine import Decision, PolicyEngine, ToolInfo
 
 log = logging.getLogger(__name__)
@@ -62,13 +62,14 @@ def _resume_entry(answers: Any, call_id: str) -> tuple[bool, str]:
 
 
 def build_graph(
-    model, tools: list[BaseTool], info: dict[str, ToolInfo], engine: PolicyEngine, checkpointer
+    model, tools: list[BaseTool], info: dict[str, ToolInfo], engine: PolicyEngine, checkpointer,
+    system_prompt: str = CORE_PROMPT,
 ) -> CompiledStateGraph:
     bound = model.bind_tools(tools) if tools else model
     by_name = {t.name: t for t in tools}
 
     async def agent(state: AgentState) -> dict:
-        reply = await bound.ainvoke([SystemMessage(SYSTEM_PROMPT), *state["messages"]])
+        reply = await bound.ainvoke([SystemMessage(system_prompt), *state["messages"]])
         return {"messages": [reply]}
 
     async def policy(state: AgentState) -> dict:

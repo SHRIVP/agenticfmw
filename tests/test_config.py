@@ -55,3 +55,11 @@ def test_pcagent_model_env_override(tmp_path, monkeypatch):
 def test_empty_checkpointer_is_none(tmp_path, monkeypatch):
     monkeypatch.setenv("EMPTY_DB", "")
     assert load_config(write(tmp_path, "packs: []\ncheckpointer: '${EMPTY_DB}'\n")).checkpointer is None
+
+
+def test_env_default_syntax(tmp_path, monkeypatch):
+    monkeypatch.delenv("NOT_SET_X", raising=False)
+    cfg = load_config(write(tmp_path, "packs: []\ncheckpointer: ${NOT_SET_X:-}\nmodel: ${NOT_SET_X:-a/b}\n"))
+    assert cfg.checkpointer is None
+    monkeypatch.delenv("PCAGENT_MODEL", raising=False)
+    assert load_config(write(tmp_path, "packs: []\nmodel: ${NOT_SET_X:-a/b}\n")).model == "a/b"
