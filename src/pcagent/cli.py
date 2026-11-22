@@ -51,6 +51,28 @@ def _serve(args) -> None:
     uvicorn.run(create_app(), host=args.host, port=args.port)
 
 
+def _eval(args) -> None:
+    import asyncio
+
+    from .config import load_config
+    from .evals import report as rep
+    from .evals.runner import run_eval
+    from .packs.loader import resolve_pack
+
+    config = load_config(args.config)
+    result = asyncio.run(run_eval(config, pack=args.pack, suite=args.suite, runs=args.runs))
+    logs = {}
+    for ref in config.packs:
+        p = resolve_pack(ref)
+        if p.evals_path:
+            logs[p.name] = p.evals_path / "tuning_log.md"
+    print("\n".join(rep.summary_lines(result)))
+    md, js = rep.write(result, args.out, logs)
+    print(f"\nreport: {md}\n        {js}")
+    if not result.passed:
+        sys.exit(1)
+
+
 def _post(http: httpx.Client, path: str, payload: dict | None = None) -> httpx.Response:
     try:
         return http.post(path, json=payload)
@@ -164,6 +186,13 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--config", help="pcagent.yaml to use (default: $PCAGENT_CONFIG or ./pcagent.yaml)")
     s.set_defaults(fn=_serve)
+    e = sub.add_parser("eval", help="run the packs' eval suites")
+    e.add_argument("--config", help="pcagent.yaml to use")
+    e.add_argument("--pack")
+    e.add_argument("--suite")
+    e.add_argument("--runs", type=int, default=1)
+    e.add_argument("--out", default="reports")
+    e.set_defaults(fn=_eval)
     c = sub.add_parser("chat")
     c.add_argument("--thread")
     c.add_argument("--api")
