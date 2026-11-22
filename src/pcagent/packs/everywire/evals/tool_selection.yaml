@@ -1,0 +1,4 @@
+suite: tool_selection
+cases: tool_selection_cases.jsonl
+scorers: [expected_tools]
+min_accuracy: 0.75

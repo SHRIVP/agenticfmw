@@ -13,7 +13,7 @@ def make_app(responses, tools, judge=None):
 
     @asynccontextmanager
     async def runtime():
-        yield graph
+        yield graph  # create_app accepts a bare graph too
 
     return create_app(runtime)
 
@@ -73,7 +73,7 @@ async def test_run_pauses_then_approval_completes():
         assert add.calls == [{"vin": "X"}]
 
         view = (await c.get(f"/threads/{tid}")).json()
-        assert set(view) == {"thread_id", "messages", "pending", "audit"}
+        assert set(view) == {"thread_id", "messages", "pending", "audit", "legacy"}
         assert view["pending"] == []
 
 

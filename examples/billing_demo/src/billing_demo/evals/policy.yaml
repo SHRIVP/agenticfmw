@@ -1,0 +1,3 @@
+suite: policy
+cases: policy_cases.jsonl
+scorers: [exact_action]

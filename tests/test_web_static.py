@@ -55,3 +55,14 @@ def test_action_refresh_keeps_banner():
         body = body[: body.index("\n}\n")]
         fin = body[body.index("finally"):]
         assert fin.index("openThread") < fin.index("setBusy(false)"), fn
+
+
+def test_no_hardcoded_tool_labels():
+    js = read("app.js")
+    assert "quote_policy_change" not in js and "add_vehicle" not in js
+
+
+def test_packs_fetched_and_legacy_banner():
+    js = read("app.js")
+    assert '"/packs"' in js
+    assert "legacy" in js

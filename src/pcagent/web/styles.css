@@ -107,6 +107,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .tool summary::before { content: "▸"; color: var(--muted); transition: transform 0.15s; }
 .tool[open] summary::before { transform: rotate(90deg); }
 .tool .verb { flex: 1; }
+.tool .pack { font: 600 11px/1 var(--sans); color: var(--accent); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 7px; }
 .tool .name { font: 12.5px var(--mono); color: var(--muted); }
 .tool-body { padding: 4px 14px 12px 32px; font-size: 13.5px; display: grid; gap: 8px; }
 .tool-body pre { margin: 0; font: 12.5px/1.5 var(--mono); background: var(--bg); border-radius: 8px;

@@ -1,0 +1,4 @@
+suite: policy
+cases: policy_cases.jsonl
+scorers: [exact_action, "pcagent.packs.everywire.scorers:InjectedIsolation"]
+min_accuracy: 0.85

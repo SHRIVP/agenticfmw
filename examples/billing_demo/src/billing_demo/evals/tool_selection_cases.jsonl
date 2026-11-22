@@ -1,0 +1,5 @@
+{"id": "ts-01", "note": "balance", "messages": [{"role": "user", "content": "What's the balance on ACC-10001?"}], "expect_tools": ["billing__get_balance"], "forbid_tools": ["billing__issue_refund"]}
+{"id": "ts-02", "note": "payments", "messages": [{"role": "user", "content": "List payments on ACC-10001."}], "expect_tools": ["billing__list_payments"], "forbid_tools": ["billing__issue_refund"]}
+{"id": "ts-03", "note": "refund asked", "messages": [{"role": "user", "content": "Refund 20 on ACC-10001 for a duplicate charge."}], "expect_tools": ["billing__issue_refund"], "forbid_tools": []}
+{"id": "ts-04", "note": "no refund for a question", "messages": [{"role": "user", "content": "Did ACC-10001 get a refund already?"}], "expect_tools": [], "forbid_tools": ["billing__issue_refund"]}
+{"id": "ts-05", "note": "big refund without reason asks first", "messages": [{"role": "user", "content": "Refund 900 to ACC-10001."}], "expect_tools": [], "forbid_tools": ["billing__issue_refund"]}

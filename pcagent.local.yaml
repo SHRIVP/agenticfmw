@@ -1,0 +1,18 @@
+# Local mock PAS (needs the sibling gwmcp repo). Data resets when the server restarts.
+packs:
+  - use: pcagent.packs.everywire:make_pack
+    settings:
+      gwmcp:
+        command: uv
+        args: [run, --project, ../gwmcp, python, server.py]
+        cwd: ../gwmcp
+        env: {GW_MOCK: "true"}
+  - use: billing_demo          # example Python pack (examples/billing_demo)
+model: anthropic/claude-opus-5-5
+judge:
+  type: jev
+rules:
+  "*__bind_*": deny
+tracing:
+  exporter: none
+checkpointer: ${DATABASE_URL:-}   # empty: in-memory

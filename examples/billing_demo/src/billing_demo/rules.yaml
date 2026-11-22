@@ -1,0 +1,7 @@
+# billing pack rules (short tool names; pcagent prefixes them as billing__<tool>)
+default: evaluate
+read_only_default: allow
+rules:
+  get_*: allow
+  list_*: allow
+  issue_refund: require_approval   # moves money

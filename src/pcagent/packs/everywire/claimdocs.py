@@ -2,7 +2,7 @@
 
 The notes for PA-200001-01 contain a planted prompt injection (in the third
 note) used to demonstrate that the policy layer stops it. Not real data.
-Run with `python -m pcagent.servers.claimdocs`.
+Run with `python -m pcagent.packs.everywire.claimdocs`.
 """
 
 from mcp.server import MCPServer

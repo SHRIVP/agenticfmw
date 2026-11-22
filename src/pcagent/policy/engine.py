@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 Action = Literal["allow", "require_approval", "deny"]
 RuleAction = Literal["allow", "require_approval", "deny", "evaluate"]
-DEFAULT_POLICY = Path(__file__).with_name("policy.yaml")
+DEFAULT_POLICY = Path(__file__).parents[1] / "packs" / "everywire" / "rules.yaml"  # v1 shim
 
 
 @dataclass
@@ -35,6 +35,10 @@ class ToolInfo:
     description: str = ""
     read_only: bool = False
     destructive: bool = False
+    pack: str | None = None
+    short_name: str | None = None
+    source: str | None = None  # "python" | "mcp"
+    label: str | None = None
 
 
 @dataclass
@@ -77,6 +81,97 @@ class Policy:
         return self.default, "default rule"
 
 
+class PolicyError(ValueError):
+    """A rules file or global rule is invalid. Raised at load time, never silently allowed."""
+
+
+ACTIONS: tuple[str, ...] = ("allow", "evaluate", "require_approval", "deny")
+STRICTNESS = {a: i for i, a in enumerate(ACTIONS)}
+PACK_RULE_KEYS = {"rules", "default", "read_only_default"}
+
+
+def _match(rules: dict[str, RuleAction], name: str) -> tuple[RuleAction, str] | None:
+    """Exact name first, then the longest matching glob."""
+    if name in rules:
+        return rules[name], name
+    for pattern in sorted((p for p in rules if any(c in p for c in "*?[")), key=len, reverse=True):
+        if fnmatch.fnmatchcase(name, pattern):
+            return rules[pattern], pattern
+    return None
+
+
+@dataclass
+class PackPolicy:
+    """One pack's rules, matched against short tool names."""
+
+    rules: dict[str, RuleAction] = field(default_factory=dict)
+    default: RuleAction = "evaluate"
+    read_only_default: RuleAction = "allow"
+
+    @classmethod
+    def load(cls, path: str | Path | None, pack: str) -> "PackPolicy":
+        if path is None or not Path(path).exists():
+            return cls()
+        try:
+            data = yaml.safe_load(Path(path).read_text()) or {}
+        except yaml.YAMLError as e:
+            raise PolicyError(f"pack {pack!r}: {path} is not valid YAML: {e}") from e
+        if not isinstance(data, dict):
+            raise PolicyError(f"pack {pack!r}: {path} must be a mapping")
+        extra = set(data) - PACK_RULE_KEYS
+        if extra:
+            raise PolicyError(
+                f"pack {pack!r}: {path} has {sorted(extra)}; pack rules may only set "
+                f"{sorted(PACK_RULE_KEYS)} (Jev thresholds are global, in pcagent.yaml)"
+            )
+        rules = data.get("rules") or {}
+        if not isinstance(rules, dict):
+            raise PolicyError(f"pack {pack!r}: 'rules' must be a mapping")
+        policy = cls(rules=rules, default=data.get("default", "evaluate"),
+                     read_only_default=data.get("read_only_default", "allow"))
+        for key, action in [*rules.items(), ("default", policy.default), ("read_only_default", policy.read_only_default)]:
+            if action not in ACTIONS:
+                raise PolicyError(f"pack {pack!r}: {key!r} has unknown action {action!r}")
+        return policy
+
+    def rule_for(self, tool: ToolInfo) -> tuple[RuleAction, str]:
+        name = tool.short_name or tool.name
+        hit = _match(self.rules, name)
+        if hit:
+            return hit[0], f"rule '{hit[1]}'"
+        if tool.read_only and not tool.destructive:
+            return self.read_only_default, "read-only tool"
+        return self.default, "default rule"
+
+
+@dataclass
+class PolicySet:
+    """Global rules (tighten only) merged with each pack's rules: the stricter result wins."""
+
+    global_rules: dict[str, RuleAction]
+    packs: dict[str, PackPolicy]
+    thresholds: Thresholds = field(default_factory=Thresholds)
+    hints: dict[str, list[str]] = field(default_factory=dict)
+    use_jev: bool = True
+
+    def __post_init__(self):
+        for pattern, action in self.global_rules.items():
+            if action not in ("deny", "require_approval"):
+                raise PolicyError(
+                    f"global rule {pattern!r}: {action!r} not allowed; global rules may only "
+                    "tighten (deny or require_approval)"
+                )
+
+    def rule_for(self, tool: ToolInfo) -> tuple[RuleAction, str]:
+        pack_action, why = self.packs.get(tool.pack or "", PackPolicy()).rule_for(tool)
+        if tool.pack:
+            why = f"{tool.pack}: {why}"
+        hit = _match(self.global_rules, tool.name)
+        if hit and STRICTNESS[hit[0]] > STRICTNESS[pack_action]:
+            return hit[0], f"global rule '{hit[1]}'"
+        return pack_action, why
+
+
 @dataclass
 class Decision:
     tool_call_id: str
@@ -108,7 +203,7 @@ def combine(j: Judgments, t: Thresholds) -> tuple[Action, str]:
 
 
 class PolicyEngine:
-    def __init__(self, policy: Policy, judge: Judge | None):
+    def __init__(self, policy: "PolicySet | Policy", judge: Judge | None):
         self.policy = policy
         self.judge = judge
 
@@ -124,14 +219,16 @@ class PolicyEngine:
             return Decision(**base, action=rule, reason=why, source="rule")
 
         # rule == "evaluate"
-        if not (self.policy.use_jev and self.judge):
+        if not (getattr(self.policy, "use_jev", True) and self.judge):
             return Decision(**base, action="require_approval", reason="no judge configured", source="fallback")
         state = {
             "user_messages": context.get("user_messages", []),
             "recent_tool_output": context.get("recent_tool_output", ""),
             "proposed_call": {
-                "tool": {"name": tool.name, "description": tool.description, "read_only": tool.read_only},
+                "tool": {"name": tool.name, "description": tool.description,
+                         "read_only": tool.read_only, "pack": tool.pack},
                 "arguments": base["arguments"],
+                "pack_hints": getattr(self.policy, "hints", {}).get(tool.pack, []),
             },
         }
         try:

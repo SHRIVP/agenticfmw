@@ -1,9 +1,0 @@
-servers:
-  gwmcp:
-    command: uv
-    args: [run, --project, ../gwmcp, python, server.py]
-    cwd: ../gwmcp
-    env: {GW_MOCK: "true"}
-  claimdocs:
-    command: python
-    args: [-m, pcagent.servers.claimdocs]

@@ -8,15 +8,10 @@ const els = {
   banner: $("banner"), composer: $("composer"), input: $("input"), send: $("send"), newChat: $("new-chat"),
 };
 
-const VERBS = {
-  search_policies: "Searched policies", search_accounts: "Searched accounts", search_jobs: "Searched jobs",
-  open_policy: "Opened the policy", start_policy_change: "Started a policy change",
-  start_submission: "Started a submission", create_account: "Created an account",
-  add_vehicle: "Added a vehicle", remove_vehicle: "Removed a vehicle", add_driver: "Added a driver",
-  set_home_details: "Set home details", update_coverage: "Updated coverage",
-  quote_policy_change: "Quoted the change", withdraw_policy_change: "Withdrew the change",
-  bind_policy_change: "Bind the change", get_claim_notes: "Read the claim notes",
-};
+// Display labels and pack names come from the server's packs (GET /packs).
+const TOOLS = {};  // qualified name -> { label, pack }
+function labelOf(name) { return (TOOLS[name] && TOOLS[name].label) || name; }
+function packOf(name) { return (TOOLS[name] && TOOLS[name].pack) || (name.includes("__") ? name.split("__")[0] : ""); }
 const CHIP = { allow: ["ALLOW", "allow"], require_approval: ["ASK", "ask"], deny: ["DENY", "deny"] };
 
 const state = { thread: new URLSearchParams(location.search).get("thread"), busy: false, view: null, choices: {} };
@@ -129,7 +124,9 @@ function scoresBlock(j) {
 function toolRow(call, decision, result) {
   const details = el("details", "tool");
   const summary = el("summary");
-  summary.append(el("span", "verb", VERBS[call.name] || call.name), el("span", "name", call.name));
+  summary.append(el("span", "verb", labelOf(call.name)));
+  if (packOf(call.name)) summary.append(el("span", "pack", packOf(call.name)));
+  summary.append(el("span", "name", call.name));
   if (decision) {
     const [label, cls] = CHIP[decision.action] || [decision.action, "ask"];
     const suffix = decision.source === "jev" ? " · Jev" : decision.source === "human" ? " · you" : "";
@@ -156,7 +153,7 @@ function approvalCards(pending) {
   for (const d of pending) {
     const card = el("div", "approval");
     const head = el("div", "head");
-    head.append(el("span", "chip ask", "NEEDS APPROVAL"), el("span", "", VERBS[d.tool] || d.tool));
+    head.append(el("span", "chip ask", "NEEDS APPROVAL"), el("span", "", labelOf(d.tool)));
     card.append(head, el("div", "", d.reason || ""), el("pre", "", pretty(d.arguments || {})));
     if (d.judgments) card.append(scoresBlock(d.judgments));
 
@@ -247,6 +244,7 @@ async function openThread(id, { push = true, keepBanner = false } = {}) {
     banner("Conversation not found.", { error: true, action: { label: "New chat", run: newChat } });
   } else if (status === 200) {
     render(body);
+    if (body.legacy) banner("This conversation was saved by an older version; start a new chat.", { action: { label: "New chat", run: newChat } });
   }
   loadThreads();
 }
@@ -336,4 +334,12 @@ window.addEventListener("popstate", () => {
 });
 
 // ---------- start ----------
-if (state.thread) openThread(state.thread, { push: false }); else loadThreads();
+async function loadPacks() {
+  const { status, body } = await api("/packs").catch(() => ({}));
+  if (status !== 200 || !Array.isArray(body)) return;
+  for (const p of body) for (const t of p.tools || []) TOOLS[t.name] = { label: t.label || t.short_name, pack: p.name };
+}
+
+loadPacks().finally(() => {
+  if (state.thread) openThread(state.thread, { push: false }); else loadThreads();
+});
