@@ -1,0 +1,94 @@
+"""Run helpers: drive the graph for one thread and shape results as plain dicts."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from langchain_core.messages import HumanMessage
+from langgraph.types import Command
+
+
+class ThreadBusy(Exception):
+    """The thread is awaiting approval and cannot take a new message."""
+
+    def __init__(self, pending: list[dict]):
+        super().__init__("awaiting approval")
+        self.pending = pending
+
+
+class NotAwaiting(Exception):
+    """The thread has no paused run to resume."""
+
+
+def serialize(msg) -> dict:
+    out: dict[str, Any] = {"type": msg.type, "content": msg.content}
+    if getattr(msg, "tool_calls", None):
+        out["tool_calls"] = msg.tool_calls
+    if getattr(msg, "tool_call_id", None):
+        out["tool_call_id"] = msg.tool_call_id
+    if getattr(msg, "status", None):
+        out["status"] = msg.status
+    return out
+
+
+def _cfg(thread_id: str, callbacks: list | None = None) -> dict:
+    cfg: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
+    if callbacks:
+        cfg["callbacks"] = callbacks
+    return cfg
+
+
+def _awaiting(snap) -> bool:
+    return tuple(snap.next) == ("approval",)
+
+
+def _waiting(snap) -> list[dict]:
+    """Decisions still waiting on a person (empty unless paused)."""
+    if not _awaiting(snap):
+        return []
+    return [d for d in snap.values.get("pending", []) if d["action"] == "require_approval"]
+
+
+async def _finish(graph, cfg: dict, n_messages: int, n_audit: int) -> dict:
+    snap = await graph.aget_state(cfg)
+    values = snap.values
+    return {
+        "status": "awaiting_approval" if _awaiting(snap) else "completed",
+        "messages": [serialize(m) for m in values.get("messages", [])[n_messages:]],
+        "pending": _waiting(snap),
+        "decisions": list(values.get("audit", []))[n_audit:],
+    }
+
+
+async def _counts(graph, cfg: dict):
+    snap = await graph.aget_state(cfg)
+    return snap, len(snap.values.get("messages", [])), len(snap.values.get("audit", []))
+
+
+async def run_turn(graph, thread_id: str, message: str, callbacks: list | None = None) -> dict:
+    cfg = _cfg(thread_id, callbacks)
+    snap, n_msgs, n_audit = await _counts(graph, cfg)
+    if _awaiting(snap):
+        raise ThreadBusy(_waiting(snap))
+    await graph.ainvoke({"messages": [HumanMessage(message)]}, cfg)
+    return await _finish(graph, cfg, n_msgs, n_audit)
+
+
+async def resume(graph, thread_id: str, decisions: dict, callbacks: list | None = None) -> dict:
+    cfg = _cfg(thread_id, callbacks)
+    snap, n_msgs, n_audit = await _counts(graph, cfg)
+    if not _awaiting(snap):
+        raise NotAwaiting(thread_id)
+    await graph.ainvoke(Command(resume=decisions), cfg)
+    return await _finish(graph, cfg, n_msgs, n_audit)
+
+
+async def thread_view(graph, thread_id: str) -> dict:
+    snap = await graph.aget_state(_cfg(thread_id))
+    values = snap.values
+    return {
+        "thread_id": thread_id,
+        "messages": [serialize(m) for m in values.get("messages", [])],
+        "pending": _waiting(snap),
+        "audit": list(values.get("audit", [])),
+    }
