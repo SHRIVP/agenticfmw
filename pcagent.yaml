@@ -3,6 +3,7 @@ packs:
   - use: pcagent.packs.everywire:make_pack
     settings:
       gwmcp: {url: https://gwmcp.ashenlabs.ca/mcp}   # deployed demo PAS (mock data, no login)
+  - use: billing_demo          # example Python pack (examples/billing_demo)
 model: anthropic/claude-opus-5-5
 judge:
   type: jev

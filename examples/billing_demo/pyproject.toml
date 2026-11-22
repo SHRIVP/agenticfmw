@@ -1,0 +1,16 @@
+[project]
+name = "billing-demo"
+version = "0.1.0"
+description = "Example pcagent pack: a small in-memory billing system, written as Python tools"
+requires-python = ">=3.12"
+dependencies = ["pcagent"]
+
+[project.entry-points."pcagent.packs"]
+billing_demo = "billing_demo:make_pack"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+pcagent = { workspace = true }

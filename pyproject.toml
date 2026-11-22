@@ -32,8 +32,15 @@ pcagent = "pcagent:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv.workspace]
+members = ["examples/*"]
+
+[tool.uv.sources]
+billing-demo = { workspace = true }
+
 [dependency-groups]
 dev = [
+    "billing-demo",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
 ]

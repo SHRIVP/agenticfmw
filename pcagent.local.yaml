@@ -7,6 +7,7 @@ packs:
         args: [run, --project, ../gwmcp, python, server.py]
         cwd: ../gwmcp
         env: {GW_MOCK: "true"}
+  - use: billing_demo          # example Python pack (examples/billing_demo)
 model: anthropic/claude-opus-5-5
 judge:
   type: jev
