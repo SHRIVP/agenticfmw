@@ -70,7 +70,7 @@ def tool_info(tool: mt.Tool) -> ToolInfo:
     )
 
 
-def to_langchain_tool(session: ClientSession, tool: mt.Tool) -> BaseTool:
+def to_langchain_tool(session: ClientSession, tool: mt.Tool, name: str | None = None) -> BaseTool:
     async def call(**kwargs) -> str:
         res = await session.call_tool(tool.name, kwargs)
         text = "\n".join(c.text for c in res.content if c.type == "text")
@@ -79,11 +79,30 @@ def to_langchain_tool(session: ClientSession, tool: mt.Tool) -> BaseTool:
         return text
 
     return StructuredTool(
-        name=tool.name,
+        name=name or tool.name,
         description=tool.description or tool.name,
         args_schema=tool.input_schema,
         coroutine=call,
     )
+
+
+async def open_session(stack: AsyncExitStack, spec: ServerSpec) -> ClientSession:
+    """Connect to one MCP server; the stack owns its lifetime."""
+    if spec.url:
+        streams = await stack.enter_async_context(streamable_http_client(spec.url))
+        read, write = streams[0], streams[1]
+    else:
+        params = StdioServerParameters(
+            command=spec.command,
+            args=spec.args,
+            # Only the safe defaults (PATH, HOME, ...) plus the spec's env: no API keys.
+            env={**get_default_environment(), **spec.env},
+            cwd=spec.cwd,
+        )
+        read, write = await stack.enter_async_context(stdio_client(params))
+    session = await stack.enter_async_context(ClientSession(read, write))
+    await session.initialize()
+    return session
 
 
 class MCPToolbox:
@@ -94,21 +113,7 @@ class MCPToolbox:
         self._stack = AsyncExitStack()
 
     async def _connect(self, spec: ServerSpec) -> ClientSession:
-        if spec.url:
-            streams = await self._stack.enter_async_context(streamable_http_client(spec.url))
-            read, write = streams[0], streams[1]
-        else:
-            params = StdioServerParameters(
-                command=spec.command,
-                args=spec.args,
-                # Only the safe defaults (PATH, HOME, ...) plus the spec's env: no API keys.
-                env={**get_default_environment(), **spec.env},
-                cwd=spec.cwd,
-            )
-            read, write = await self._stack.enter_async_context(stdio_client(params))
-        session = await self._stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
-        return session
+        return await open_session(self._stack, spec)
 
     async def __aenter__(self) -> "MCPToolbox":
         try:
