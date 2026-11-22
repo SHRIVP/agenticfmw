@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from .config import get_settings
 from .runs import NotAwaiting, ThreadBusy, ThreadLocked, resume, run_turn, thread_view
 from .runtime import default_runtime
+from .tracing import callbacks
 
 
 class RunRequest(BaseModel):
@@ -50,7 +51,9 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
     @app.post("/threads/{thread_id}/runs")
     async def post_run(thread_id: str, body: RunRequest, request: Request):
         try:
-            return await run_turn(request.app.state.graph, thread_id, body.message)
+            return await run_turn(
+                request.app.state.graph, thread_id, body.message, callbacks=callbacks()
+            )
         except ThreadBusy as busy:
             return JSONResponse(
                 {"detail": "awaiting approval", "pending": busy.pending}, status_code=409
@@ -62,7 +65,9 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
     async def post_approvals(thread_id: str, body: ApprovalsRequest, request: Request):
         decisions = {k: v.model_dump() for k, v in body.decisions.items()}
         try:
-            return await resume(request.app.state.graph, thread_id, decisions)
+            return await resume(
+                request.app.state.graph, thread_id, decisions, callbacks=callbacks()
+            )
         except NotAwaiting:
             raise HTTPException(409, "not awaiting approval")
         except ThreadLocked:
