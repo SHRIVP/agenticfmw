@@ -128,3 +128,31 @@ async def thread_view(graph, thread_id: str) -> dict:
         "pending": _waiting(snap),
         "audit": list(values.get("audit", [])),
     }
+
+
+TITLE_LIMIT = 60
+
+
+def _title(messages) -> str | None:
+    for m in messages:
+        if m.type == "human":
+            text = " ".join(str(m.text if hasattr(m, "text") else m.content).split())
+            return text if len(text) <= TITLE_LIMIT else text[:TITLE_LIMIT] + "…"
+    return None
+
+
+async def list_threads(graph) -> list[dict]:
+    """Conversations in the checkpointer, newest first; threads with no user message are skipped."""
+    latest: dict[str, str] = {}
+    async for tup in graph.checkpointer.alist(None):
+        tid = tup.config["configurable"]["thread_id"]
+        ts = tup.checkpoint["ts"]
+        if ts > latest.get(tid, ""):
+            latest[tid] = ts
+    rows = []
+    for tid, ts in latest.items():
+        snap = await graph.aget_state(_cfg(tid))
+        title = _title(snap.values.get("messages", []))
+        if title:
+            rows.append({"thread_id": tid, "title": title, "updated_at": ts})
+    return sorted(rows, key=lambda r: r["updated_at"], reverse=True)

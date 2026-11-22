@@ -180,3 +180,50 @@ async def test_interrupted_run_returns_409():
         r = await c.post(f"/threads/{tid}/runs", json={"message": "try again"})
         assert r.status_code == 409
         assert r.json() == {"detail": "interrupted run"}
+
+
+# --- GET /threads and the web page ---------------------------------------
+
+
+async def test_list_threads_empty():
+    app = make_app([], [])
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        r = await c.get("/threads")
+        assert r.status_code == 200
+        assert r.json() == []
+
+
+async def test_list_threads_titles_and_order():
+    app = make_app([AIMessage("One."), AIMessage("Two.")], [])
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        a = await new_thread(c)
+        b = await new_thread(c)
+        await c.post(f"/threads/{a}/runs", json={"message": "Find policy PA-200001-01"})
+        await c.post(f"/threads/{b}/runs", json={"message": "x" * 80})
+        rows = (await c.get("/threads")).json()
+        assert [r["thread_id"] for r in rows] == [b, a]
+        assert rows[1]["title"] == "Find policy PA-200001-01"
+        assert len(rows[0]["title"]) == 61 and rows[0]["title"].endswith("…")
+        assert all(r["updated_at"] for r in rows)
+
+
+async def test_list_threads_skips_unused():
+    app = make_app([], [])
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        tid = await new_thread(c)
+        assert tid not in [r["thread_id"] for r in (await c.get("/threads")).json()]
+
+
+async def test_root_serves_page():
+    app = make_app([], [])
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        r = await c.get("/")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/html")
+        assert "pcagent" in r.text
+
+
+async def test_static_served():
+    app = make_app([], [])
+    async with app.router.lifespan_context(app), await client_for(app) as c:
+        assert (await c.get("/static/index.html")).status_code == 200

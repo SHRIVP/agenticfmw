@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import get_settings
-from .runs import InterruptedRun, NotAwaiting, ThreadBusy, ThreadLocked, resume, run_turn, thread_view
+from .runs import InterruptedRun, NotAwaiting, ThreadBusy, ThreadLocked, list_threads, resume, run_turn, thread_view
 from .runtime import default_runtime
 from .tracing import callbacks
+
+
+WEB_DIR = Path(__file__).with_name("web")
 
 
 class RunRequest(BaseModel):
@@ -43,6 +48,16 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
     @app.get("/health")
     async def health():
         return {"ok": True}
+
+    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def index():
+        return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/threads")
+    async def get_threads(request: Request):
+        return await list_threads(request.app.state.graph)
 
     @app.post("/threads")
     async def create_thread():
