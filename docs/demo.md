@@ -11,6 +11,8 @@ in the PAS view (a previous take leaves one open).
 paused `start_policy_change` too; the live eval has since been tuned and Jev now allows it.
 Scores vary a little between takes.
 
+> **Web UI and restart beat:** the recording can use the web UI (`http://localhost:8000`) instead of `pcagent chat`. Record beat 3 against the **deployed PAS** (the default `servers.yaml`). The local mock resets its data when the server restarts, so a resumed quote finds no open change. See `docs/layers/09-web-ui.md`.
+
 ## Policy change since that run
 
 `quote_policy_change: require_approval` was added to `src/pcagent/policy/policy.yaml`. A quote shows

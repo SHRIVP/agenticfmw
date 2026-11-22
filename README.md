@@ -77,8 +77,10 @@ docker compose up -d db
 uv sync
 cp .env.example .env      # set ANTHROPIC_API_KEY and TYPESAFE_API_KEY
 DATABASE_URL=postgresql://pcagent:pcagent@localhost:5432/pcagent uv run pcagent serve
-uv run pcagent chat       # in a second terminal
+open http://localhost:8000  # web UI (or: uv run pcagent chat)
 ```
+
+![pcagent web UI: tool calls with policy decisions and Jev scores](docs/img/ui-chat.jpg)
 
 - `.env.example` lists the variables. `ANTHROPIC_API_KEY` drives the default model (`PCAGENT_MODEL`, any LiteLLM model string); `TYPESAFE_API_KEY` drives Jev.
 - Without `DATABASE_URL` the checkpointer is in memory, so approvals won't survive a restart.
@@ -108,10 +110,11 @@ One note per layer:
 - [CLI and demo](docs/layers/06-cli.md): a thin client over HTTP; the first live demo showed Jev flagging legitimate calls.
 - [Policy eval](docs/layers/07-eval.md): the baseline's false positives came from the PAS's own next-step hints, and a review round found a real gap.
 - [Observability](docs/layers/08-observability.md): tracing is opt-in and lazy, so tests and local runs are unaffected.
+- [Web UI](docs/layers/09-web-ui.md): three static files over the same API, with no build step; tool output is text-only so a planted `<script>` can't run.
 
 ## Next steps
 
 Not built, deliberately: Redis queues, OPA or Cedar for the rules, a TypeScript SDK, Terraform or CDK on AWS,
-a web UI, multi-tenancy and login, real carrier integrations, and RAG over pgvector (`insurancerag` could become a tool).
+multi-tenancy and login, real carrier integrations, and RAG over pgvector (`insurancerag` could become a tool).
 Also pending: re-recording the demo, the injection beat on a self-hosted model, and a Langfuse trace screenshot.
 Design notes: [`docs/superpowers/specs/2026-11-22-pcagent-design.md`](docs/superpowers/specs/2026-11-22-pcagent-design.md).
