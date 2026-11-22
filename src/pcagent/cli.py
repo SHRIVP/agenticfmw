@@ -48,10 +48,51 @@ def _serve(args) -> None:
     uvicorn.run(create_app(), host=args.host, port=args.port)
 
 
+def _post(http: httpx.Client, path: str, payload: dict | None = None) -> httpx.Response:
+    try:
+        return http.post(path, json=payload)
+    except httpx.HTTPError as e:
+        print(f"cannot reach pcagent API at {http.base_url}: {e or type(e).__name__}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _result(r: httpx.Response) -> dict | None:
+    """Normalise a run/approvals response to a result dict, or print the problem and return None."""
+    try:
+        body = r.json()
+    except ValueError:
+        print(f"error {r.status_code}: {r.text[:200]}")
+        return None
+    if not isinstance(body, dict):
+        print(f"error {r.status_code}: {str(body)[:200]}")
+        return None
+    if r.status_code == 409:
+        detail = body.get("detail")
+        if detail == "awaiting approval" and body.get("pending"):
+            return {"status": "awaiting_approval", "messages": [], "decisions": [],
+                    "pending": body["pending"]}
+        if detail == "thread busy":
+            print("thread busy: another request is running on this thread; wait a moment and try again")
+        else:
+            print(f"error 409: {detail or body}")
+        return None
+    if r.status_code != 200:
+        print(f"error {r.status_code}: {body}")
+        return None
+    return body
+
+
 def _chat(args) -> None:
     api = (args.api or get_settings().api_url).rstrip("/")
     with httpx.Client(base_url=api, timeout=600) as http:
-        thread = args.thread or http.post("/threads").json()["thread_id"]
+        thread = args.thread
+        if not thread:
+            r = _post(http, "/threads")
+            try:
+                thread = r.json()["thread_id"]
+            except (ValueError, KeyError, TypeError):
+                print(f"error {r.status_code}: could not create a thread: {r.text[:200]}")
+                sys.exit(1)
         print(f"thread: {thread}")
         try:
             while True:
@@ -61,36 +102,30 @@ def _chat(args) -> None:
                     break
                 if not msg.strip():
                     continue
-                r = http.post(f"/threads/{thread}/runs", json={"message": msg})
-                try:
-                    body = r.json()
-                except ValueError:
-                    print(f"error {r.status_code}: {r.text[:200]}")
-                    continue
-                if r.status_code == 409 and body.get("detail") == "awaiting approval":
-                    body = {"status": "awaiting_approval", "messages": [], "decisions": [],
-                            "pending": body["pending"]}
-                elif r.status_code != 200:
-                    print(f"error {r.status_code}: {body}")
-                    continue
-                _drive(http, thread, body)
-        except (KeyboardInterrupt, EOFError):
+                body = _result(_post(http, f"/threads/{thread}/runs", {"message": msg}))
+                if body is not None and not _drive(http, thread, body):
+                    break
+        except KeyboardInterrupt:
             pass
 
 
-def _drive(http: httpx.Client, thread: str, body: dict) -> None:
+def _drive(http: httpx.Client, thread: str, body: dict) -> bool:
+    """Render a result and walk any approvals. Returns False if the user left mid-approval."""
     print(render(body))
     while body["status"] == "awaiting_approval":
         decisions = {}
-        for p in body["pending"]:
-            ans = input(f"Approve {p['tool']}({_args(p['arguments'])})? [y/N] ")
-            decisions[p["tool_call_id"]] = {"approved": ans.strip().lower() in ("y", "yes"), "note": ""}
-        r = http.post(f"/threads/{thread}/approvals", json={"decisions": decisions})
-        if r.status_code != 200:
-            print(f"error {r.status_code}: {r.text}")
-            return
-        body = r.json()
+        try:
+            for p in body["pending"]:
+                ans = input(f"Approve {p['tool']}({_args(p['arguments'])})? [y/N] ")
+                decisions[p["tool_call_id"]] = {"approved": ans.strip().lower() in ("y", "yes"), "note": ""}
+        except (EOFError, KeyboardInterrupt):
+            print(f"\napproval still pending; resume with: pcagent chat --thread {thread}")
+            return False
+        body = _result(_post(http, f"/threads/{thread}/approvals", {"decisions": decisions}))
+        if body is None:
+            return True
         print(render(body))
+    return True
 
 
 def main(argv: list[str] | None = None) -> None:
