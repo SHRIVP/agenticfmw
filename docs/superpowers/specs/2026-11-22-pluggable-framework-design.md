@@ -2,6 +2,12 @@
 
 Date: 2026-11-22. Status: awaiting Pushkar's approval. It builds on the v1 design (`2026-11-22-pcagent-design.md`) and the web UI design (`2026-11-22-web-ui-design.md`).
 
+## Diagram
+
+![pcagent logical architecture](../../diagrams/pcagent-framework.jpg)
+
+Editable source: [`docs/diagrams/pcagent-framework.excalidraw`](../../diagrams/pcagent-framework.excalidraw). Open it at excalidraw.com or in the VS Code Excalidraw extension.
+
 ## Why
 
 Pushkar calls pcagent a **framework**. A framework has to let a carrier's own IT developers connect *their* systems (any PAS, billing, claims or document system), *their* monitoring and *their* evals without editing pcagent's code. Today the core is general, but the edges are hard-wired:
