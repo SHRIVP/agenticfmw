@@ -2,21 +2,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
+from fakes import GOOD, FakeJudge
 from pcagent.policy.engine import Policy, PolicyEngine, Thresholds, ToolInfo, combine
 from pcagent.policy.jev import Judgments, to_judgments
-
-GOOD = Judgments(0.97, 0.91, 0.02, 1.0, 1)
-
-
-class FakeJudge:
-    def __init__(self, result=None, error=None):
-        self.result, self.error, self.calls = result, error, 0
-
-    async def judge(self, state):
-        self.calls += 1
-        if self.error:
-            raise self.error
-        return self.result
 
 
 def call(name):
@@ -89,7 +77,7 @@ async def test_jev_each_failure_escalates(bad, word):
 
 
 async def test_judge_error_fails_closed():
-    d = await PolicyEngine(Policy.load(), FakeJudge(error=TimeoutError())).decide(
+    d = await PolicyEngine(Policy.load(), FakeJudge(TimeoutError())).decide(
         call("add_vehicle"), ToolInfo("add_vehicle"), {}
     )
     assert d.action == "require_approval" and d.source == "fallback"
