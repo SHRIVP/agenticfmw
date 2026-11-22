@@ -10,7 +10,9 @@ and `resume`, which put it in the graph config, so each run becomes one trace
 ## Why this way
 - Tracing is opt-in. With no keys nothing is imported or sent, so tests and
   local runs are unaffected.
-- The import is lazy, so the app starts even if langfuse is misconfigured.
+- The import is lazy, and `callbacks()` runs per request inside a try: if the handler
+  can't be built (bad keys or host), it logs a warning with the exception type only and
+  returns `[]`, so a misconfigured Langfuse turns tracing off instead of failing runs.
 - Verified against langfuse 5.2.0: `from langfuse.langchain import CallbackHandler`;
   constructor is `CallbackHandler(*, public_key=None, trace_context=None)`.
   It reads keys from the environment.
@@ -22,7 +24,7 @@ and `resume`, which put it in the graph config, so each run becomes one trace
 - Constructing the handler does not block on the network; the client exports in
   the background. The test still sets `LANGFUSE_TRACING_ENABLED=false` and an
   unroutable host to be safe.
-- The CLI talks to the API over HTTP, so it is traced too; only the server needs the keys.
+- Only the server needs the keys; the CLI itself is not traced.
 
 ## Not done
 - Manual trace check and `docs/img/trace.png` were skipped: no Langfuse keys or

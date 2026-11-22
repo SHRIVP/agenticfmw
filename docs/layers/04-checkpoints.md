@@ -33,7 +33,6 @@ closing the first connection entirely before the second graph opens its own.
   without changing infrastructure.
 
 ## Notes
-- The api image needs the `serve` subcommand (Task 6); `docker compose config` validates now.
 - Run `docker compose up -d db` before `pytest -m live`.
 - Test helpers (`setup`, `ai_call`, `ask`) moved from test_graph.py into tests/fakes.py
   so the Postgres test reuses the same scenario.

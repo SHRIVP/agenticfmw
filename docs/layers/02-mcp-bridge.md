@@ -25,4 +25,7 @@ for `PA-200001-01` carry a planted prompt injection.
 - `streamable_http_client` yields a tuple; use only `streams[0]` and `streams[1]`.
 - Server side, `FastMCP` is now `mcp.server.MCPServer` (`@server.tool(annotations=ToolAnnotations(...))`,
   `server.run("stdio")`). The lowlevel `Server` still exists (gwmcp uses it).
-- The stdio subprocess needs `os.environ` merged with the spec's env, or `uv`/`python` aren't found.
+- The stdio subprocess needs `PATH` or `uv`/`python` aren't found. It gets MCP's
+  `get_default_environment()` (PATH, HOME, USER, ...) plus the spec's `env`, not the whole
+  `os.environ`, so API keys don't leak to servers; pass one explicitly as `env: {K: "${K}"}`.
+- The Streamable HTTP session doesn't reconnect: if the deployed PAS restarts, restart pcagent.

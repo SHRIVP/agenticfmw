@@ -129,3 +129,28 @@ def test_explicit_annotations_as_gwmcp_sends_them():
     for (ro, de), want in cases.items():
         i = tool_info(_tool(mt.ToolAnnotations(read_only_hint=ro, destructive_hint=de)))
         assert (i.read_only, i.destructive) == want
+
+
+async def test_stdio_server_does_not_inherit_secrets(monkeypatch):
+    import pcagent.mcp_bridge as bridge
+
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_stdio_client(params):
+        seen["env"] = params.env
+        raise Stop
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "ts-secret")
+    monkeypatch.setattr(bridge, "stdio_client", fake_stdio_client)
+    spec = ServerSpec(name="s", command="uv", env={"GW_MOCK": "true"})
+    with pytest.raises(ToolboxError):
+        async with MCPToolbox([spec]):
+            pass
+    env = seen["env"]
+    assert "ANTHROPIC_API_KEY" not in env and "TYPESAFE_API_KEY" not in env
+    assert env["PATH"] == os.environ["PATH"]  # uv and python still resolve
+    assert env["GW_MOCK"] == "true"

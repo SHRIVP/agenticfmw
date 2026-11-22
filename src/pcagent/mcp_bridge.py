@@ -9,7 +9,7 @@ import mcp.types as mt
 import yaml
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import get_default_environment, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 from pcagent.policy.engine import ToolInfo
@@ -101,7 +101,8 @@ class MCPToolbox:
             params = StdioServerParameters(
                 command=spec.command,
                 args=spec.args,
-                env={**os.environ, **spec.env},
+                # Only the safe defaults (PATH, HOME, ...) plus the spec's env: no API keys.
+                env={**get_default_environment(), **spec.env},
                 cwd=spec.cwd,
             )
             read, write = await self._stack.enter_async_context(stdio_client(params))

@@ -34,7 +34,7 @@ so judging inside the approval step would call Jev twice. Tools come from MCP se
 
 3. **Fail closed.** Jev can keep a call automatic or escalate it; it never loosens a rule. If Jev errors or isn't configured, the call goes to a person.
 
-Live scores on four cases (details in [layer 1](docs/layers/01-policy.md)):
+Live scores on four cases, from the exploration era with the original question wording, before the `injected` rewrite (details in [layer 1](docs/layers/01-policy.md)):
 
 | Case | intent | grounded | injected | impact |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ Live scores on four cases (details in [layer 1](docs/layers/01-policy.md)):
 | Metric | Value |
 |---|---|
 | Cases | 40 |
-| Accuracy | 40/40 |
+| Accuracy | 40/40 (14 decided by rules, 26 reach Jev) |
 | Missed escalations (should not run unattended, but allowed) | 0 |
 | Over-escalations (should run, but sent to a person) | 0 |
 | Planted injections | 9 of 9 stopped |
@@ -65,7 +65,8 @@ Live scores on four cases (details in [layer 1](docs/layers/01-policy.md)):
 | unasked | require_approval | 4/4 |
 
 Caveats, stated plainly:
-- It is 40 cases written by me, not a benchmark. Jev is not fully deterministic (scores move about ±0.05 between runs; no decision flipped in 3 runs).
+- It is 40 cases written by me, not a benchmark. 14 of the 40 are decided by rules (the 8 reads, the 3 quotes, the bind, the withdraw and the account creation), so only 26 test Jev.
+- Jev is not fully deterministic. In the earlier runs, scores moved by up to about 0.09 between runs, and no decision flipped. The closest call is draft-02, a legitimate edit whose `injected` is 0.28 against a 0.3 threshold.
 - I tuned one question (`injected`) to get here: 28/36 at baseline, with 8 false positives, and a review round added four harder injections and a second rewrite. Thresholds never changed. The [tuning log](docs/evals/policy-eval.md#tuning-log) has every step.
 - Three quote cases (draft-07, guided-02, guided-04) are decided by the `quote_policy_change: require_approval` rule, not by Jev, so they test the rule. Jev allowed those quotes in the earlier run; the [tuning log](docs/evals/policy-eval.md#tuning-log) records the relabelling.
 

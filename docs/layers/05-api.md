@@ -42,7 +42,7 @@ MCP sessions and the checkpointer connection. `default_runtime` wires them.
 ## Example
     curl -s -X POST localhost:8000/threads                     # {"thread_id": "T"}
     curl -s -X POST localhost:8000/threads/T/runs -H 'content-type: application/json' \
-      -d '{"message": "Add a 2021 Civic to PA-100001-01"}'     # awaiting_approval
+      -d '{"message": "Add a 2021 Civic to PA-200001-01"}'     # awaiting_approval
     curl -s -X POST localhost:8000/threads/T/approvals -H 'content-type: application/json' \
       -d '{"decisions": {"<tool_call_id>": {"approved": true, "note": "ok"}}}'
     curl -s localhost:8000/threads/T
