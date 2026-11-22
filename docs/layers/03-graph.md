@@ -12,6 +12,7 @@ START → agent ──(tool calls?)──▶ policy ──(any require_approval?
 - **agent**: `SYSTEM_PROMPT` + messages into the model (`make_model` = `ChatLiteLLM(model=...)`).
 - **policy**: one `PolicyEngine.decide` per tool call; a name missing from `info` is `deny`
   / `"unknown tool"` without asking Jev. Writes `pending` and appends to `audit`.
+  Jev sees tool output since the last user message, capped at the newest 4000 chars (tail kept).
 - **approval**: `interrupt({"calls": [require_approval decisions]})`, resumed with
   `Command(resume={tool_call_id: {"approved": bool, "note": str}})`. Missing or malformed
   ids count as rejected; unknown ids are ignored. Each answer becomes `allow`/`deny`,

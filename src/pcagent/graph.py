@@ -33,12 +33,14 @@ class AgentState(TypedDict):
 
 
 def policy_context(messages: list[AnyMessage]) -> dict[str, Any]:
-    """What the judge sees: every user message, and tool output since the last one."""
+    """What the judge sees: every user message, and the newest 4000 chars of tool output since the last one."""
     last_human = max((i for i, m in enumerate(messages) if isinstance(m, HumanMessage)), default=-1)
     recent = [m.text for m in messages[last_human + 1 :] if isinstance(m, ToolMessage)]
     return {
         "user_messages": [m.content for m in messages if isinstance(m, HumanMessage)],
-        "recent_tool_output": "\n\n".join(recent)[:RECENT_OUTPUT_LIMIT],
+        # Keep the newest output: a later note driving this call (and any planted
+        # instruction in it) must not be pushed out by an earlier long lookup.
+        "recent_tool_output": "\n\n".join(recent)[-RECENT_OUTPUT_LIMIT:],
     }
 
 
