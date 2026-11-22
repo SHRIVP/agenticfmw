@@ -35,6 +35,10 @@ class ToolInfo:
     description: str = ""
     read_only: bool = False
     destructive: bool = False
+    pack: str | None = None
+    short_name: str | None = None
+    source: str | None = None  # "python" | "mcp"
+    label: str | None = None
 
 
 @dataclass
