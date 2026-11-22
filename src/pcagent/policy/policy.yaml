@@ -15,7 +15,8 @@ rules:
   bind_policy_change: deny          # binding is a human action in the PAS view
   withdraw_policy_change: require_approval
   create_account: require_approval  # creates a customer record
-  # Everything else (start_policy_change, add_vehicle, update_coverage, quote_...)
+  quote_policy_change: require_approval  # a quote shows the customer a price, so a person signs off
+  # Everything else (start_policy_change, add_vehicle, update_coverage, ...)
   # falls to `evaluate`.
 
 jev:

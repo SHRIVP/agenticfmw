@@ -1,0 +1,175 @@
+from types import SimpleNamespace as NS
+
+import pytest
+
+from fakes import GOOD, FakeJudge
+from pcagent.policy.engine import Policy, PolicyEngine, Thresholds, ToolInfo, combine
+from pcagent.policy.jev import Judgments, to_judgments
+
+
+def call(name):
+    return {"id": "c1", "name": name, "args": {"x": 1}}
+
+
+def test_exact_rule_beats_glob():
+    p = Policy(rules={"search_*": "allow", "search_policies": "deny"})
+    assert p.rule_for(ToolInfo("search_policies")) == ("deny", "rule 'search_policies'")
+    shipped = Policy.load()
+    assert shipped.rule_for(ToolInfo("search_policies")) == ("allow", "rule 'search_*'")
+    assert shipped.rule_for(ToolInfo("bind_policy_change"))[0] == "deny"
+
+
+def test_longest_glob_wins():
+    p = Policy(rules={"search_*": "allow", "search_claims_*": "deny"})
+    assert p.rule_for(ToolInfo("search_claims_x"))[0] == "deny"
+    assert p.rule_for(ToolInfo("search_other"))[0] == "allow"
+
+
+def test_read_only_default_and_unknown_default():
+    p = Policy()
+    assert p.rule_for(ToolInfo("foo", read_only=True))[0] == "allow"
+    assert p.rule_for(ToolInfo("foo", read_only=False))[0] == "evaluate"
+
+
+async def test_destructive_never_auto_allowed():
+    engine = PolicyEngine(Policy(rules={"drop": "allow"}), None)
+    d = await engine.decide(call("drop"), ToolInfo("drop", destructive=True), {})
+    assert d.action == "require_approval"
+    assert "destructive tool" in d.reason
+
+
+async def test_destructive_evaluate_not_sent_to_jev():
+    judge = FakeJudge(GOOD)
+    d = await PolicyEngine(Policy(), judge).decide(call("drop"), ToolInfo("drop", destructive=True), {})
+    assert d.action == "require_approval"
+    assert d.source == "rule"
+    assert "destructive tool" in d.reason
+    assert judge.calls == 0
+
+
+async def test_deny_skips_judge():
+    judge = FakeJudge(GOOD)
+    d = await PolicyEngine(Policy.load(), judge).decide(call("bind_policy_change"), ToolInfo("bind_policy_change"), {})
+    assert d.action == "deny" and d.source == "rule"
+    assert judge.calls == 0
+
+
+async def test_jev_pass_allows():
+    d = await PolicyEngine(Policy.load(), FakeJudge(GOOD)).decide(call("add_vehicle"), ToolInfo("add_vehicle"), {})
+    assert d.action == "allow" and d.source == "jev"
+    assert d.judgments == GOOD.as_dict()
+    assert d.as_dict()["tool_call_id"] == "c1"
+
+
+@pytest.mark.parametrize(
+    "bad,word",
+    [
+        (Judgments(0.5, 0.91, 0.02, 1.0, 1), "intent"),
+        (Judgments(0.97, 0.01, 0.02, 1.0, 1), "grounded"),
+        (Judgments(0.97, 0.91, 0.97, 1.0, 1), "injected"),
+        (Judgments(0.97, 0.91, 0.02, 3.0, 3), "impact"),
+    ],
+)
+async def test_jev_each_failure_escalates(bad, word):
+    d = await PolicyEngine(Policy.load(), FakeJudge(bad)).decide(call("add_vehicle"), ToolInfo("add_vehicle"), {})
+    assert d.action == "require_approval"
+    assert word in d.reason
+
+
+async def test_judge_error_fails_closed():
+    d = await PolicyEngine(Policy.load(), FakeJudge(TimeoutError())).decide(
+        call("add_vehicle"), ToolInfo("add_vehicle"), {}
+    )
+    assert d.action == "require_approval" and d.source == "fallback"
+    assert "TimeoutError" in d.reason
+
+
+async def test_no_judge_fails_closed():
+    d = await PolicyEngine(Policy.load(), None).decide(call("add_vehicle"), ToolInfo("add_vehicle"), {})
+    assert d.action == "require_approval"
+
+
+def test_combine_lists_every_failure():
+    action, reason = combine(Judgments(0.1, 0.1, 0.9, 3.0, 3), Thresholds())
+    assert action == "require_approval"
+    assert all(w in reason for w in ("intent", "grounded", "injected", "impact"))
+
+
+def test_to_judgments_maps_response():
+    resp = NS(
+        nouls={"intent": NS(noul=0.9), "grounded": NS(noul=0.8), "injected": NS(noul=0.1)},
+        scores={"impact": NS(score=2.99, probabilities={0: 0, 1: 0, 2: 0.01, 3: 0.99})},
+    )
+    j = to_judgments(resp)
+    assert (j.intent, j.grounded, j.injected) == (0.9, 0.8, 0.1)
+    assert j.impact == 2.99 and j.impact_level == 3
+
+
+def test_shipped_policy_yaml_loads():
+    p = Policy.load()
+    assert p.rules["bind_policy_change"] == "deny"
+    assert p.thresholds.impact_max == 1.5
+
+
+# --- I2: bad Jev values must fail closed, never allow or crash ----------------
+
+
+def _resp(intent=0.9, grounded=0.8, injected=0.1, impact=1.0, probs=None):
+    return NS(
+        nouls={"intent": NS(noul=intent), "grounded": NS(noul=grounded), "injected": NS(noul=injected)},
+        scores={"impact": NS(score=impact, probabilities=probs if probs is not None else {1: 1.0})},
+    )
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"intent": float("nan")},
+        {"grounded": float("nan")},
+        {"injected": float("nan")},
+        {"impact": float("nan")},
+        {"intent": None},
+        {"impact": None},
+        {"injected": float("inf")},
+        {"intent": 1.5},
+        {"grounded": -0.1},
+        {"impact": 3.5},
+        {"impact": -1.0},
+    ],
+)
+def test_to_judgments_rejects_bad_values(kw):
+    with pytest.raises(ValueError):
+        to_judgments(_resp(**kw))
+
+
+class _BadValueJudge:
+    def __init__(self, j):
+        self.j = j
+
+    async def judge(self, state):
+        return self.j
+
+
+@pytest.mark.parametrize(
+    "j",
+    [
+        Judgments(float("nan"), float("nan"), float("nan"), float("nan"), 1),
+        Judgments(None, 0.9, 0.0, 1.0, 1),  # type: ignore[arg-type]
+    ],
+)
+async def test_bad_judgments_fail_closed(j):
+    d = await PolicyEngine(Policy.load(), _BadValueJudge(j)).decide(call("add_vehicle"), ToolInfo("add_vehicle"), {})
+    assert d.action == "require_approval" and d.source == "fallback"
+
+
+async def test_bad_values_through_jevjudge_fail_closed():
+    from pcagent.policy.jev import JevJudge
+
+    class Client:
+        async def system_one(self, state, questions):
+            return _resp(injected=float("nan"))
+
+    d = await PolicyEngine(Policy.load(), JevJudge(client=Client())).decide(
+        call("add_vehicle"), ToolInfo("add_vehicle"), {}
+    )
+    assert d.action == "require_approval" and d.source == "fallback"

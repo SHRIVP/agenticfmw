@@ -1,7 +1,7 @@
 [project]
 name = "pcagent"
 version = "0.1.0"
-description = "Add your description here"
+description = "Safe agent framework for P&C insurance"
 readme = "README.md"
 authors = [
     { name = "Pushkar", email = "catchpushkar@gmail.com" }
@@ -9,14 +9,17 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.165.0",
+    "httpx>=0.28.1",
     "langchain-core>=1.8.4",
     "langchain-litellm>=0.11.2",
+    "langfuse>=5.2.0",
     "langgraph>=1.2.24",
     "langgraph-checkpoint-postgres>=3.2.1",
     "litellm>=1.110.2",
     "mcp>=2.3.0",
     "psycopg[binary,pool]>=3.3.9",
     "pydantic-settings>=2.16.3",
+    "python-dotenv>=1.2.4",
     "pyyaml>=6.0.4",
     "typesafe-sdk>=0.7.5",
     "uvicorn[standard]>=0.54.0",
@@ -31,7 +34,12 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["live: needs network and API keys"]
+addopts = "-m 'not live'"
