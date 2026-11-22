@@ -80,7 +80,6 @@ def to_langchain_tool(session: ClientSession, tool: mt.Tool) -> BaseTool:
         description=tool.description or tool.name,
         args_schema=tool.input_schema,
         coroutine=call,
-        handle_tool_error=True,
     )
 
 

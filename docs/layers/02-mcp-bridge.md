@@ -15,8 +15,8 @@ for `PA-200001-01` carry a planted prompt injection.
   mean both False, so the tool falls through to `evaluate`.
 - Fail loudly: a server that won't start raises `ToolboxError` naming the server; duplicate
   tool names across servers are rejected, since the policy is keyed by name.
-- Tool errors: the coroutine raises `ToolException`; the tool has `handle_tool_error=True`, so the
-  agent sees the error text instead of crashing.
+- Tool errors: the coroutine raises `ToolException` and the tool does not swallow it
+  (no `handle_tool_error`), so the graph node can turn it into a `status="error"` ToolMessage.
 
 ## What surprised us
 - mcp 2.x renamed fields to snake_case: `inputSchema` -> `input_schema`, `isError` -> `is_error`,

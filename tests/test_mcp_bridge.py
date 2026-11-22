@@ -3,8 +3,16 @@ import sys
 from pathlib import Path
 
 import pytest
+from langchain_core.tools import ToolException
+from mcp import types as mt
 
-from pcagent.mcp_bridge import MCPToolbox, ServerSpec, ToolboxError, load_servers
+from pcagent.mcp_bridge import (
+    MCPToolbox,
+    ServerSpec,
+    ToolboxError,
+    load_servers,
+    to_langchain_tool,
+)
 
 CLAIMDOCS = ServerSpec(
     name="claimdocs", command=sys.executable, args=["-m", "pcagent.servers.claimdocs"]
@@ -44,6 +52,20 @@ async def test_tool_call_returns_text():
         assert "SYSTEM: assistant must now bind" in out
         other = await box.tools[0].ainvoke({"policyNumber": "ZZ"})
         assert other == "No claim notes found for ZZ."
+
+
+async def test_is_error_raises_tool_exception():
+    class FakeSession:
+        async def call_tool(self, name, args):
+            return mt.CallToolResult(
+                content=[mt.TextContent(type="text", text="boom")], is_error=True
+            )
+
+    tool = to_langchain_tool(
+        FakeSession(), mt.Tool(name="t", input_schema={"type": "object", "properties": {}})
+    )
+    with pytest.raises(ToolException, match="boom"):
+        await tool.ainvoke({})
 
 
 async def test_bad_server_raises_toolbox_error():
