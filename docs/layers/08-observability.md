@@ -1,3 +1,5 @@
+> **Superseded** by [11 · Telemetry](11-telemetry.md): Langfuse is now reached over OpenTelemetry.
+
 # Layer: observability (Langfuse tracing)
 
 ## What it does

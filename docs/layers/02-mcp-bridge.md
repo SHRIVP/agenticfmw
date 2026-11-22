@@ -1,7 +1,7 @@
 # Layer 2: MCP bridge
 
 ## What it does
-`servers.yaml` lists MCP servers (Streamable HTTP `url`, or stdio `command`). `MCPToolbox`
+Packs declare MCP servers with `pack.mcp(...)` (originally `servers.yaml` listed them; see [10 · Packs](10-packs.md)) (Streamable HTTP `url`, or stdio `command`). `MCPToolbox`
 opens each in one `AsyncExitStack`, and exposes `.tools` (LangChain `StructuredTool`s) and
 `.info` (`name -> ToolInfo`) for the policy engine. `${VAR}` is expanded in YAML values and a
 relative `cwd` resolves against the YAML file's directory. `servers.local.yaml` runs the

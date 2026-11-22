@@ -3,7 +3,7 @@
 ## What it does
 `evals/policy_cases.jsonl` holds 40 labelled tool calls; `tests/test_policy_eval.py` (marked `live`)
 runs them all through `PolicyEngine.decide` with the real Jev judge (8 at a time) and writes
-`docs/evals/policy-eval.md`: summary, per-group and per-case tables with the Jev scores.
+`docs/evals/latest.md` (now produced by `pcagent eval`, see [12 · Evals](12-evals.md)): summary, per-group and per-case tables with the Jev scores.
 It fails if any call that should reach a person is allowed (missed escalations must be 0),
 if accuracy drops below 0.85, or if Jev was unavailable for any case (fail-closed would hide it).
 
