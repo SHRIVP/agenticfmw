@@ -5,29 +5,10 @@ from langchain_core.tools import ToolException
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from fakes import BAD, GOOD, FakeJudge, ScriptedChatModel, fake_tool
+from fakes import BAD, GOOD, FakeJudge, ScriptedChatModel, ai_call, ask, fake_tool, setup
 from pcagent.gateway import SYSTEM_PROMPT, make_model
 from pcagent.graph import build_graph, policy_context
 from pcagent.policy.engine import Policy, PolicyEngine, ToolInfo
-
-
-def ai_call(*calls):
-    """An AIMessage with tool calls given as (id, name, args)."""
-    return AIMessage("", tool_calls=[{"id": i, "name": n, "args": a} for i, n, a in calls])
-
-
-def setup(responses, tools, judge=None, saver=None):
-    model = ScriptedChatModel(responses=responses)
-    info = {t.name: ToolInfo(t.name, description=t.description) for t in tools}
-    engine = PolicyEngine(Policy.load(), judge or FakeJudge(GOOD))
-    saver = saver or InMemorySaver()
-    graph = build_graph(model, tools, info, engine, saver)
-    cfg = {"configurable": {"thread_id": str(uuid.uuid4())}}
-    return graph, cfg, model, info, engine, saver
-
-
-def ask(text="Find policy PA-100001-01"):
-    return {"messages": [HumanMessage(text)]}
 
 
 def tool_messages(state):

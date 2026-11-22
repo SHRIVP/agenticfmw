@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import StructuredTool
 from pydantic import Field
 
+from langgraph.checkpoint.memory import InMemorySaver
+
+from pcagent.graph import build_graph
+from pcagent.policy.engine import Policy, PolicyEngine, ToolInfo
 from pcagent.policy.jev import Judgments
 
 GOOD = Judgments(0.97, 0.91, 0.02, 1.0, 1)  # every Jev check passes
@@ -69,3 +74,22 @@ def fake_tool(name: str, result: Any | Exception = "ok") -> RecordingTool:
     )
     tool.calls = calls
     return tool
+
+
+def ai_call(*calls):
+    """An AIMessage with tool calls given as (id, name, args)."""
+    return AIMessage("", tool_calls=[{"id": i, "name": n, "args": a} for i, n, a in calls])
+
+
+def setup(responses, tools, judge=None, saver=None):
+    model = ScriptedChatModel(responses=responses)
+    info = {t.name: ToolInfo(t.name, description=t.description) for t in tools}
+    engine = PolicyEngine(Policy.load(), judge or FakeJudge(GOOD))
+    saver = saver or InMemorySaver()
+    graph = build_graph(model, tools, info, engine, saver)
+    cfg = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    return graph, cfg, model, info, engine, saver
+
+
+def ask(text="Find policy PA-100001-01"):
+    return {"messages": [HumanMessage(text)]}
