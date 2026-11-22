@@ -12,6 +12,7 @@ from pcagent.mcp_bridge import (
     ToolboxError,
     load_servers,
     to_langchain_tool,
+    tool_info,
 )
 
 CLAIMDOCS = ServerSpec(
@@ -96,3 +97,35 @@ async def test_gwmcp_deployed_smoke():
         tool = next(t for t in box.tools if t.name == "search_policies")
         out = await tool.ainvoke({"policyNumber": "PA-200001-01"})
         assert "ACC-10001" in out
+
+
+# --- I6: MCP's destructive_hint defaults to true for tools that are not read-only ---
+
+
+def _tool(annotations):
+    return mt.Tool(name="t", input_schema={"type": "object"}, annotations=annotations)
+
+
+def test_no_annotations_is_destructive():
+    i = tool_info(_tool(None))
+    assert (i.read_only, i.destructive) == (False, True)
+
+
+def test_annotations_without_destructive_hint_is_destructive():
+    i = tool_info(_tool(mt.ToolAnnotations(title="x")))
+    assert (i.read_only, i.destructive) == (False, True)
+    i = tool_info(_tool(mt.ToolAnnotations(read_only_hint=False)))
+    assert i.destructive is True
+
+
+def test_read_only_tool_is_not_destructive():
+    i = tool_info(_tool(mt.ToolAnnotations(read_only_hint=True)))
+    assert (i.read_only, i.destructive) == (True, False)
+
+
+def test_explicit_annotations_as_gwmcp_sends_them():
+    # gwmcp sets both hints explicitly on every tool; results must not change.
+    cases = {(True, False): (True, False), (False, False): (False, False), (False, True): (False, True)}
+    for (ro, de), want in cases.items():
+        i = tool_info(_tool(mt.ToolAnnotations(read_only_hint=ro, destructive_hint=de)))
+        assert (i.read_only, i.destructive) == want

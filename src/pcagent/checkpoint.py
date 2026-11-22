@@ -13,7 +13,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 @asynccontextmanager
 async def open_checkpointer(database_url: str | None) -> AsyncIterator[BaseCheckpointSaver]:
     """Yield a saver. Postgres tables are created on first use (`setup()` is idempotent)."""
-    if database_url is None:
+    if not database_url:  # None or "" (an empty DATABASE_URL= line in .env)
         yield InMemorySaver()
         return
     async with AsyncPostgresSaver.from_conn_string(database_url) as saver:

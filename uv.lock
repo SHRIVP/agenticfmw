@@ -1922,6 +1922,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-litellm" },
     { name = "langfuse" },
@@ -1931,6 +1932,7 @@ dependencies = [
     { name = "mcp" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "typesafe-sdk" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1938,7 +1940,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -1946,6 +1947,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.165.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain-core", specifier = ">=1.8.4" },
     { name = "langchain-litellm", specifier = ">=0.11.2" },
     { name = "langfuse", specifier = ">=5.2.0" },
@@ -1955,6 +1957,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.3.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.9" },
     { name = "pydantic-settings", specifier = ">=2.16.3" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "pyyaml", specifier = ">=6.0.4" },
     { name = "typesafe-sdk", specifier = ">=0.7.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
@@ -1962,7 +1965,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-asyncio", specifier = ">=1.5.0" },
 ]

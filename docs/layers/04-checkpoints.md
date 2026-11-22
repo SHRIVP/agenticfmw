@@ -3,7 +3,7 @@
 ## What it does
 `open_checkpointer(database_url)` yields the saver the graph writes its state to.
 With a URL it is an `AsyncPostgresSaver` (tables created by an idempotent `setup()`);
-with `None` it is an `InMemorySaver`, used by tests and quick local runs.
+with `None` or an empty string it is an `InMemorySaver`, used by tests and quick local runs.
 
 A checkpoint is a snapshot of the whole graph state after each step: the message
 list, the audit trail, the pending-approval decisions, and which node runs next
@@ -25,6 +25,10 @@ closing the first connection entirely before the second graph opens its own.
 - A context manager, because the Postgres saver owns a connection that must close;
   the FastAPI lifespan (next task) opens it once for the server's life.
 - `None` falls back to memory so offline tests need no database.
+- An empty `DATABASE_URL=` (as `cp .env.example .env` once produced) used to try Postgres
+  with `""`; the check is now `if not database_url`, and the example line is commented out.
+- `default_runtime` loads `./.env` into `os.environ` (`config.load_env`, shell values win).
+  The API keys used to arrive only because importing litellm loads `.env` as a side effect.
 - The compose `db` uses the pgvector image so later layers can add embeddings
   without changing infrastructure.
 

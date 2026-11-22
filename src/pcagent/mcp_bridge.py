@@ -59,11 +59,14 @@ def load_servers(path: Path) -> list[ServerSpec]:
 
 def tool_info(tool: mt.Tool) -> ToolInfo:
     a = tool.annotations
+    read_only = bool(a and a.read_only_hint)
+    # Per the MCP spec, destructive_hint defaults to true for tools that are not read-only.
+    destructive = not read_only and (a is None or a.destructive_hint is not False)
     return ToolInfo(
         name=tool.name,
         description=tool.description or "",
-        read_only=bool(a and a.read_only_hint),
-        destructive=bool(a and a.destructive_hint),
+        read_only=read_only,
+        destructive=destructive,
     )
 
 

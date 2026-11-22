@@ -29,7 +29,9 @@ Expected on the next recording:
 1. `open_policy`, `start_policy_change` and `add_vehicle` are `[ALLOW]` (rule, then Jev checks passed).
 2. `quote_policy_change` is `[ASK]` by rule, and the CLI shows `Approve quote_policy_change(...)? [y/N]`.
 3. Ctrl-C the server, start it again, run `uv run pcagent chat --thread <id>` (the id is printed as
-   `thread: <id>`), press Enter, answer `y`. The run resumes from the Postgres checkpoint and the quote goes through.
+   `thread: <id>`). The CLI reads the thread first and goes straight to the pending
+   `Approve quote_policy_change(...)? [y/N]` prompt; answer `y`. The run resumes from the Postgres
+   checkpoint and the quote goes through.
 
 Illustrative output (earlier run, before the quote rule; there `start_policy_change` also paused, on a Jev `injected` score):
 

@@ -115,3 +115,41 @@ def test_interrupted_run_tells_user_to_start_new_thread(monkeypatch, capsys):
     _chat(monkeypatch, handler, ["hi"])
     out = capsys.readouterr().out
     assert "interrupted" in out and "new thread" in out
+
+
+def test_thread_with_pending_approval_prompts_at_once(monkeypatch, capsys):
+    # Restart beat: `chat --thread T` on a paused thread goes straight to the approval prompt.
+    calls = []
+    view = {"thread_id": "T", "messages": [], "audit": [], "pending": PENDING["pending"]}
+    done = {"status": "completed", "messages": [{"type": "ai", "content": "Quoted."}],
+            "pending": [], "decisions": []}
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.method == "GET" and request.url.path == "/threads/T":
+            return httpx.Response(200, json=view)
+        if request.url.path == "/threads/T/approvals":
+            import json as _json
+            assert _json.loads(request.content) == {"decisions": {"c1": {"approved": True, "note": ""}}}
+            return httpx.Response(200, json=done)
+        return httpx.Response(500, text="unexpected")
+
+    _chat(monkeypatch, handler, ["y"])
+    out = capsys.readouterr().out
+    assert ("POST", "/threads/T/approvals") in calls
+    assert not any(p.endswith("/runs") for _, p in calls)
+    assert "Quoted." in out
+
+
+def test_thread_without_pending_goes_to_prompt(monkeypatch, capsys):
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.method == "GET":
+            return httpx.Response(200, json={"thread_id": "T", "messages": [], "audit": [], "pending": []})
+        return httpx.Response(200, json={"status": "completed", "pending": [], "decisions": [],
+                                         "messages": [{"type": "ai", "content": "Hi."}]})
+
+    _chat(monkeypatch, handler, ["hello"])
+    assert calls == [("GET", "/threads/T"), ("POST", "/threads/T/runs")]

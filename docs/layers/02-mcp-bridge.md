@@ -11,8 +11,9 @@ for `PA-200001-01` carry a planted prompt injection.
 ## Why it's built this way
 - No `langchain-mcp-adapters`: it needs `mcp<2`, while `litellm` needs `mcp>=2.3`. The bridge is ~100 lines.
 - Annotations feed the policy: `read_only_hint` becomes `ToolInfo.read_only` (default allow),
-  `destructive_hint` becomes `ToolInfo.destructive` (never auto-allowed). Missing annotations
-  mean both False, so the tool falls through to `evaluate`.
+  `destructive_hint` becomes `ToolInfo.destructive` (never auto-allowed). As in the MCP spec,
+  a tool that is not read-only is destructive unless it says `destructive_hint: false`, so a
+  tool with no annotations goes to a person (unless a rule denies it). gwmcp sets both hints.
 - Fail loudly: a server that won't start raises `ToolboxError` naming the server; duplicate
   tool names across servers are rejected, since the policy is keyed by name.
 - Tool errors: the coroutine raises `ToolException` and the tool does not swallow it

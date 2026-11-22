@@ -17,6 +17,40 @@ async def test_memory_when_no_url():
         assert isinstance(saver, InMemorySaver)
 
 
+async def test_memory_when_url_is_empty_string():
+    # `cp .env.example .env` used to leave DATABASE_URL="" and try Postgres with it.
+    async with open_checkpointer("") as saver:
+        assert isinstance(saver, InMemorySaver)
+
+
+def test_load_env_puts_dotenv_keys_in_environ(tmp_path, monkeypatch):
+    from pcagent.config import load_env
+
+    (tmp_path / ".env").write_text("PCAGENT_TEST_KEY=from-dotenv\nPCAGENT_TEST_SET=from-file\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PCAGENT_TEST_KEY", raising=False)
+    monkeypatch.setenv("PCAGENT_TEST_SET", "from-shell")
+    load_env()
+    assert os.environ["PCAGENT_TEST_KEY"] == "from-dotenv"
+    assert os.environ["PCAGENT_TEST_SET"] == "from-shell"  # the shell wins
+    monkeypatch.delenv("PCAGENT_TEST_KEY")
+
+
+async def test_default_runtime_loads_env_first(monkeypatch):
+    from pcagent import runtime
+
+    class Loaded(Exception):
+        pass
+
+    def boom():
+        raise Loaded
+
+    monkeypatch.setattr(runtime, "load_env", boom)
+    with pytest.raises(Loaded):
+        async with runtime.default_runtime(None):
+            pass
+
+
 @pytest.mark.live
 async def test_postgres_resume_across_connections():
     url = os.environ.get("DATABASE_URL") or LOCAL_URL

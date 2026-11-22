@@ -56,6 +56,22 @@ def _post(http: httpx.Client, path: str, payload: dict | None = None) -> httpx.R
         sys.exit(1)
 
 
+def _pending_on(http: httpx.Client, thread: str) -> list[dict]:
+    """Approvals the thread is already waiting on (empty if none, unknown or unreadable)."""
+    try:
+        r = http.get(f"/threads/{thread}")
+    except httpx.HTTPError as e:
+        print(f"cannot reach pcagent API at {http.base_url}: {e or type(e).__name__}", file=sys.stderr)
+        sys.exit(1)
+    if r.status_code != 200:
+        return []
+    try:
+        pending = r.json().get("pending")
+    except (ValueError, AttributeError):
+        return []
+    return pending if isinstance(pending, list) else []
+
+
 def _result(r: httpx.Response) -> dict | None:
     """Normalise a run/approvals response to a result dict, or print the problem and return None."""
     try:
@@ -98,6 +114,12 @@ def _chat(args) -> None:
                 sys.exit(1)
         print(f"thread: {thread}")
         try:
+            if args.thread:  # a paused thread goes straight to its approval prompt
+                pending = _pending_on(http, thread)
+                if pending:
+                    body = {"status": "awaiting_approval", "messages": [], "decisions": [], "pending": pending}
+                    if not _drive(http, thread, body):
+                        return
             while True:
                 try:
                     msg = input("you> ")
