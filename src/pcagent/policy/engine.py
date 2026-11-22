@@ -118,8 +118,8 @@ class PolicyEngine:
 
         if rule == "deny":
             return Decision(**base, action="deny", reason=f"denied by {why}", source="rule")
-        if tool.destructive and rule == "allow":
-            rule, why = "require_approval", "destructive tool"
+        if tool.destructive:  # never auto-allowed, and Jev is not asked
+            rule, why = "require_approval", f"destructive tool ({why})"
         if rule in ("allow", "require_approval"):
             return Decision(**base, action=rule, reason=why, source="rule")
 
