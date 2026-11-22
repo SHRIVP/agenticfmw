@@ -26,6 +26,11 @@ raises `ThreadBusy` and the API returns 409 with the `pending` list, so the clie
 can show what to approve. Likewise approving a thread that is not paused is a 409
 (`NotAwaiting`), which makes a sequential double-submitted approval harmless.
 
+If an earlier run crashed part-way (the checkpoint stops at a node other than
+`approval`), its AI message may have tool calls with no answer, which providers reject
+on every later turn. `run_turn` raises `InterruptedRun` and the API returns 409
+`{"detail": "interrupted run"}`. Recovery: start a new thread.
+
 Concurrent requests are guarded by a per-thread `asyncio.Lock` around check-plus-invoke:
 if it is held, the second request gets 409 `thread busy` (not queued), so two
 simultaneous approvals cannot both run the tool. The lock is per process; with

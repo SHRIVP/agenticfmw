@@ -135,9 +135,9 @@ class PolicyEngine:
             },
         }
         try:
-            j = await self.judge.judge(state)
-        except Exception as exc:  # missing key, network, rate limit
+            j = (await self.judge.judge(state)).check()  # NaN, None or out-of-range values raise
+            action, reason = combine(j, self.policy.thresholds)
+        except Exception as exc:  # missing key, network, rate limit, bad values
             log.warning("Jev unavailable for %s: %r", tool.name, exc)
             return Decision(**base, action="require_approval", reason=f"Jev unavailable ({exc.__class__.__name__})", source="fallback")
-        action, reason = combine(j, self.policy.thresholds)
         return Decision(**base, action=action, reason=reason, source="jev", judgments=j.as_dict())

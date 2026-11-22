@@ -22,6 +22,14 @@ class NotAwaiting(Exception):
     """The thread has no paused run to resume."""
 
 
+class InterruptedRun(Exception):
+    """An earlier run on this thread crashed part-way (e.g. the model or a node raised).
+
+    Its checkpoint may hold tool calls with no answer, which providers reject, so the
+    thread takes no new messages. Recovery: start a new thread.
+    """
+
+
 class ThreadLocked(Exception):
     """Another request is already driving this thread."""
 
@@ -95,6 +103,8 @@ async def run_turn(graph, thread_id: str, message: str, callbacks: list | None =
         snap, n_msgs, n_audit = await _counts(graph, cfg)
         if _awaiting(snap):
             raise ThreadBusy(_waiting(snap))
+        if snap.next:  # stopped mid-run, not at the approval interrupt
+            raise InterruptedRun(thread_id)
         await graph.ainvoke({"messages": [HumanMessage(message)]}, cfg)
         return await _finish(graph, cfg, n_msgs, n_audit)
 

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .config import get_settings
-from .runs import NotAwaiting, ThreadBusy, ThreadLocked, resume, run_turn, thread_view
+from .runs import InterruptedRun, NotAwaiting, ThreadBusy, ThreadLocked, resume, run_turn, thread_view
 from .runtime import default_runtime
 from .tracing import callbacks
 
@@ -60,6 +60,8 @@ def create_app(runtime: Callable[[], AbstractAsyncContextManager] | None = None)
             )
         except ThreadLocked:
             return JSONResponse({"detail": "thread busy"}, status_code=409)
+        except InterruptedRun:  # recovery: start a new thread
+            return JSONResponse({"detail": "interrupted run"}, status_code=409)
 
     @app.post("/threads/{thread_id}/approvals")
     async def post_approvals(thread_id: str, body: ApprovalsRequest, request: Request):

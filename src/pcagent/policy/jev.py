@@ -12,6 +12,7 @@ parallel. Jev only supplies the judgments; what to do with them is decided in
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
@@ -38,6 +39,20 @@ class Judgments:
 
     def as_dict(self) -> dict[str, float]:
         return asdict(self)
+
+    def check(self) -> "Judgments":
+        """Raise ValueError unless every value is a finite number in range. NaN would pass every threshold."""
+        top = len(IMPACT_LEVELS) - 1
+        for name, value, hi in (
+            ("intent", self.intent, 1),
+            ("grounded", self.grounded, 1),
+            ("injected", self.injected, 1),
+            ("impact", self.impact, top),
+            ("impact_level", self.impact_level, top),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= hi:
+                raise ValueError(f"Jev returned an invalid {name}: {value!r}")
+        return self
 
 
 class Judge(Protocol):
@@ -112,6 +127,8 @@ class JevJudge:
 def to_judgments(response) -> Judgments:
     """Map a SystemOneResponse onto Judgments (pure, no I/O)."""
     impact = response.scores["impact"]
+    if impact.score is None or (isinstance(impact.score, float) and not math.isfinite(impact.score)):
+        raise ValueError(f"Jev returned an invalid impact: {impact.score!r}")
     level = max(impact.probabilities, key=impact.probabilities.get) if impact.probabilities else round(impact.score)
     return Judgments(
         intent=response.nouls["intent"].noul,
@@ -119,4 +136,4 @@ def to_judgments(response) -> Judgments:
         injected=response.nouls["injected"].noul,
         impact=impact.score,
         impact_level=int(level),
-    )
+    ).check()

@@ -109,3 +109,67 @@ def test_shipped_policy_yaml_loads():
     p = Policy.load()
     assert p.rules["bind_policy_change"] == "deny"
     assert p.thresholds.impact_max == 1.5
+
+
+# --- I2: bad Jev values must fail closed, never allow or crash ----------------
+
+
+def _resp(intent=0.9, grounded=0.8, injected=0.1, impact=1.0, probs=None):
+    return NS(
+        nouls={"intent": NS(noul=intent), "grounded": NS(noul=grounded), "injected": NS(noul=injected)},
+        scores={"impact": NS(score=impact, probabilities=probs if probs is not None else {1: 1.0})},
+    )
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"intent": float("nan")},
+        {"grounded": float("nan")},
+        {"injected": float("nan")},
+        {"impact": float("nan")},
+        {"intent": None},
+        {"impact": None},
+        {"injected": float("inf")},
+        {"intent": 1.5},
+        {"grounded": -0.1},
+        {"impact": 3.5},
+        {"impact": -1.0},
+    ],
+)
+def test_to_judgments_rejects_bad_values(kw):
+    with pytest.raises(ValueError):
+        to_judgments(_resp(**kw))
+
+
+class _BadValueJudge:
+    def __init__(self, j):
+        self.j = j
+
+    async def judge(self, state):
+        return self.j
+
+
+@pytest.mark.parametrize(
+    "j",
+    [
+        Judgments(float("nan"), float("nan"), float("nan"), float("nan"), 1),
+        Judgments(None, 0.9, 0.0, 1.0, 1),  # type: ignore[arg-type]
+    ],
+)
+async def test_bad_judgments_fail_closed(j):
+    d = await PolicyEngine(Policy.load(), _BadValueJudge(j)).decide(call("add_vehicle"), ToolInfo("add_vehicle"), {})
+    assert d.action == "require_approval" and d.source == "fallback"
+
+
+async def test_bad_values_through_jevjudge_fail_closed():
+    from pcagent.policy.jev import JevJudge
+
+    class Client:
+        async def system_one(self, state, questions):
+            return _resp(injected=float("nan"))
+
+    d = await PolicyEngine(Policy.load(), JevJudge(client=Client())).decide(
+        call("add_vehicle"), ToolInfo("add_vehicle"), {}
+    )
+    assert d.action == "require_approval" and d.source == "fallback"

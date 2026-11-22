@@ -187,3 +187,108 @@ def test_make_model_is_litellm():
 
     m = make_model("anthropic/claude-opus-5-5")
     assert isinstance(m, ChatLiteLLM) and m.model == "anthropic/claude-opus-5-5"
+
+
+# --- C1: ambiguous tool-call ids must never let a call through -------------------
+
+
+async def test_duplicate_id_deny_shared_with_allow_never_runs_bind():
+    bind = fake_tool("bind_policy_change")
+    search = fake_tool("search_policies", "found")
+    graph, cfg, *_ = setup(
+        [ai_call(("x", "bind_policy_change", {"job": "J1"}), ("x", "search_policies", {"q": "P"})), AIMessage("No.")],
+        [bind, search],
+    )
+    out = await graph.ainvoke(ask("find it"), cfg)
+    assert bind.calls == []
+    assert search.calls == []  # the whole turn is denied
+    assert [a["action"] for a in out["audit"]] == ["deny", "deny"]
+    assert all(a["reason"] == "ambiguous tool call ids" for a in out["audit"])
+    tms = tool_messages(out)
+    assert len(tms) == 2 and all(t.status == "error" for t in tms)
+
+
+async def test_empty_ids_nothing_runs():
+    search = fake_tool("search_policies", "found")
+    open_ = fake_tool("open_policy", "opened")
+    graph, cfg, *_ = setup(
+        [ai_call(("", "search_policies", {"q": "P"}), ("", "open_policy", {"n": "P"})), AIMessage("No.")],
+        [search, open_],
+    )
+    out = await graph.ainvoke(ask("find it"), cfg)
+    assert search.calls == [] and open_.calls == []
+    assert all(a["action"] == "deny" and a["reason"] == "ambiguous tool call ids" for a in out["audit"])
+
+
+async def test_single_empty_id_denied():
+    search = fake_tool("search_policies", "found")
+    graph, cfg, *_ = setup([ai_call(("", "search_policies", {"q": "P"})), AIMessage("No.")], [search])
+    out = await graph.ainvoke(ask("find it"), cfg)
+    assert search.calls == []
+    assert [a["reason"] for a in out["audit"]] == ["ambiguous tool call ids"]
+
+
+async def test_approval_with_shared_id_does_not_approve_other_call():
+    add = fake_tool("add_vehicle", "added")
+    cov = fake_tool("update_coverage", "updated")
+    graph, cfg, *_ = setup(
+        [ai_call(("x", "add_vehicle", {"vin": "X"}), ("x", "update_coverage", {"c": 1})), AIMessage("Done.")],
+        [add, cov],
+        FakeJudge(BAD),
+    )
+    await graph.ainvoke(ask("add a vehicle"), cfg)
+    if (await graph.aget_state(cfg)).next == ("approval",):
+        await graph.ainvoke(Command(resume={"x": {"approved": True, "note": ""}}), cfg)
+    assert add.calls == [] and cov.calls == []
+
+
+async def test_tools_blocks_when_decision_does_not_match_call():
+    # Defence in depth: a pending decision for a different tool at that position blocks the call.
+    search = fake_tool("search_policies", "found")
+    graph, cfg, *_ = setup([ai_call(("c1", "search_policies", {"q": "P"})), AIMessage("Hm.")], [search])
+    await graph.ainvoke(ask(), cfg)  # runs normally; now replay the tools node with a forged decision
+    forged = [{"tool_call_id": "c1", "tool": "open_policy", "arguments": {}, "action": "allow", "reason": "x", "source": "rule"}]
+    msgs = (await graph.aget_state(cfg)).values["messages"]
+    ai = next(m for m in reversed(msgs) if isinstance(m, AIMessage) and m.tool_calls)
+    search.calls.clear()
+    await graph.aupdate_state(cfg, {"messages": [ai.model_copy(update={"id": "new-ai"})], "pending": forged}, as_node="approval")
+    try:
+        await graph.ainvoke(None, cfg)
+    except IndexError:  # scripted model ran out of replies; the tools node has already run
+        pass
+    assert search.calls == []
+
+
+# --- I3: a crash must not leave a dangling tool call -----------------------------
+
+
+async def test_decide_exception_becomes_require_approval_fallback():
+    add = fake_tool("add_vehicle", "added")
+    graph, cfg, model, info, engine, saver = setup([ai_call(("c1", "add_vehicle", {"vin": "X"})), AIMessage("Ok.")], [add])
+
+    async def boom(*a, **k):
+        raise RuntimeError("engine bug")
+
+    engine.decide = boom
+    await graph.ainvoke(ask("add a vehicle"), cfg)
+    state = await graph.aget_state(cfg)
+    assert state.next == ("approval",)
+    [d] = state.values["pending"]
+    assert d["action"] == "require_approval" and d["source"] == "fallback"
+    assert "RuntimeError" in d["reason"]
+    assert add.calls == []
+
+
+async def test_run_turn_refuses_interrupted_thread():
+    import pytest
+
+    from pcagent.runs import InterruptedRun, run_turn
+
+    search = fake_tool("search_policies", "found")
+    graph, cfg, *_ = setup([ai_call(("c1", "search_policies", {"q": "P"}))], [search])
+    tid = cfg["configurable"]["thread_id"]
+    with pytest.raises(IndexError):  # scripted model has no reply left: the run stops mid-way
+        await run_turn(graph, tid, "find it")
+    assert (await graph.aget_state(cfg)).next == ("agent",)
+    with pytest.raises(InterruptedRun):
+        await run_turn(graph, tid, "again")

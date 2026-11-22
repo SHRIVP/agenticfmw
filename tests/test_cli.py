@@ -104,3 +104,14 @@ def test_eof_at_approval_prompt_prints_resume_hint(monkeypatch, capsys):
     assert "approval still pending" in out
     assert "pcagent chat --thread T" in out
     assert not any(p.endswith("/approvals") for p in posted)
+
+
+def test_interrupted_run_tells_user_to_start_new_thread(monkeypatch, capsys):
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(404, json={"detail": "unknown thread"})
+        return httpx.Response(409, json={"detail": "interrupted run"})
+
+    _chat(monkeypatch, handler, ["hi"])
+    out = capsys.readouterr().out
+    assert "interrupted" in out and "new thread" in out

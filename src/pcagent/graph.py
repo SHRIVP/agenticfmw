@@ -11,6 +11,7 @@ checkpointed by the time `approval` interrupts, so a resume never calls Jev agai
 
 from __future__ import annotations
 
+import logging
 import operator
 from typing import Annotated, Any, TypedDict
 
@@ -23,7 +24,10 @@ from langgraph.types import interrupt
 from .gateway import SYSTEM_PROMPT
 from .policy.engine import Decision, PolicyEngine, ToolInfo
 
+log = logging.getLogger(__name__)
+
 RECENT_OUTPUT_LIMIT = 4000
+AMBIGUOUS_IDS = "ambiguous tool call ids"
 
 
 class AgentState(TypedDict):
@@ -42,6 +46,11 @@ def policy_context(messages: list[AnyMessage]) -> dict[str, Any]:
         # instruction in it) must not be pushed out by an earlier long lookup.
         "recent_tool_output": "\n\n".join(recent)[-RECENT_OUTPUT_LIMIT:],
     }
+
+
+def ids_ambiguous(ids: list[Any]) -> bool:
+    """True when any id is empty or repeated: decisions and approvals could then reach the wrong call."""
+    return any(not i for i in ids) or len(set(ids)) != len(ids)
 
 
 def _resume_entry(answers: Any, call_id: str) -> tuple[bool, str]:
@@ -66,12 +75,20 @@ def build_graph(
         calls = state["messages"][-1].tool_calls
         context = policy_context(state["messages"])
         pending = []
+        ambiguous = ids_ambiguous([c.get("id") for c in calls])
         for call in calls:
             tool = info.get(call["name"])
-            if tool is None:
+            if ambiguous:  # deny the whole turn; nothing is judged
+                d = Decision(call.get("id") or "", call["name"], call.get("args", {}), "deny", AMBIGUOUS_IDS, "rule")
+            elif tool is None:
                 d = Decision(call["id"], call["name"], call.get("args", {}), "deny", "unknown tool", "rule")
             else:
-                d = await engine.decide(call, tool, context)
+                try:
+                    d = await engine.decide(call, tool, context)
+                except Exception as exc:  # a crash here would strand the AI message's tool calls
+                    log.warning("policy engine failed for %s: %r", call["name"], exc)
+                    reason = f"policy engine error ({exc.__class__.__name__})"
+                    d = Decision(call["id"], call["name"], call.get("args", {}), "require_approval", reason, "fallback")
             pending.append(d.as_dict())
         return {"pending": pending, "audit": [dict(d) for d in pending]}
 
@@ -79,10 +96,12 @@ def build_graph(
         # Only interrupt() and applying the answer: this node re-runs from the top on resume.
         asks = [d for d in state["pending"] if d["action"] == "require_approval"]
         answers = interrupt({"calls": asks})
+        # Answers are keyed by id, so with ambiguous ids no answer can count as approval.
+        ambiguous = ids_ambiguous([d["tool_call_id"] for d in state["pending"]])
         pending, audit = [], []
         for d in state["pending"]:
             if d["action"] == "require_approval":
-                approved, note = _resume_entry(answers, d["tool_call_id"])
+                approved, note = (False, AMBIGUOUS_IDS) if ambiguous else _resume_entry(answers, d["tool_call_id"])
                 verdict = "approved by a person" if approved else "rejected by a person"
                 d = {
                     **d,
@@ -95,13 +114,22 @@ def build_graph(
         return {"pending": pending, "audit": audit}
 
     async def run_tools(state: AgentState) -> dict:
-        decisions = {d["tool_call_id"]: d for d in state["pending"]}
+        calls = state["messages"][-1].tool_calls
+        pending = state["pending"]
+        # Decisions are matched to calls by position, never by id (ids can repeat).
+        if ids_ambiguous([c.get("id") for c in calls]):
+            blocked = AMBIGUOUS_IDS
+        elif len(pending) != len(calls):
+            blocked = "no decision"
+        else:
+            blocked = None
         out = []
-        for call in state["messages"][-1].tool_calls:  # in call order, one message per call
-            d = decisions.get(call["id"])
+        for i, call in enumerate(calls):  # in call order, one message per call
+            d = None if blocked else pending[i]
+            if d is not None and (d["tool"] != call["name"] or d["tool_call_id"] != call["id"]):
+                d = {**d, "action": "deny", "reason": "decision does not match the call"}
             if d is None or d["action"] != "allow":
-                reason = d["reason"] if d else "no decision"
-                out.append(_error(call, f"Blocked by policy: {reason}"))
+                out.append(_error(call, f"Blocked by policy: {d['reason'] if d else blocked}"))
                 continue
             try:
                 msg = await by_name[call["name"]].ainvoke({**call, "type": "tool_call"})

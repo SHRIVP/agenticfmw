@@ -165,3 +165,18 @@ async def test_concurrent_requests_one_wins():
     assert (r1.status_code, second.status_code, third.status_code) == (200, 409, 409)
     assert second.json()["detail"] == "thread busy" and third.json()["detail"] == "thread busy"
     assert len(calls) == 1
+
+
+async def test_interrupted_run_returns_409():
+    # The model fails after a tool ran, so the checkpoint stops mid-run (next == ("agent",)).
+    search = fake_tool("search_policies", "found")
+    app = make_app([ai_call(("c1", "search_policies", {"q": "P"}))], [search])
+    async with app.router.lifespan_context(app), httpx.AsyncClient(
+        transport=ASGITransport(app, raise_app_exceptions=False), base_url="http://t"
+    ) as c:
+        tid = await new_thread(c)
+        r = await c.post(f"/threads/{tid}/runs", json={"message": "find it"})
+        assert r.status_code == 500
+        r = await c.post(f"/threads/{tid}/runs", json={"message": "try again"})
+        assert r.status_code == 409
+        assert r.json() == {"detail": "interrupted run"}

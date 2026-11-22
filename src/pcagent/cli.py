@@ -73,6 +73,9 @@ def _result(r: httpx.Response) -> dict | None:
                     "pending": body["pending"]}
         if detail == "thread busy":
             print("thread busy: another request is running on this thread; wait a moment and try again")
+        elif detail == "interrupted run":
+            print("interrupted run: an earlier run on this thread crashed part-way; "
+                  "start a new thread with `pcagent chat`")
         else:
             print(f"error 409: {detail or body}")
         return None

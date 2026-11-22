@@ -13,11 +13,14 @@ START → agent ──(tool calls?)──▶ policy ──(any require_approval?
 - **policy**: one `PolicyEngine.decide` per tool call; a name missing from `info` is `deny`
   / `"unknown tool"` without asking Jev. Writes `pending` and appends to `audit`.
   Jev sees tool output since the last user message, capped at the newest 4000 chars (tail kept).
+  If any call id is empty or repeated, every call in the turn is `deny` / `"ambiguous tool call ids"`.
+  If `decide` itself raises, that call is `require_approval` / `fallback`, so the node never crashes.
 - **approval**: `interrupt({"calls": [require_approval decisions]})`, resumed with
   `Command(resume={tool_call_id: {"approved": bool, "note": str}})`. Missing or malformed
   ids count as rejected; unknown ids are ignored. Each answer becomes `allow`/`deny`,
   `source="human"`, with an audit record carrying the `note`.
-- **tools**: one `ToolMessage` per call, in call order. Allowed calls run (sequentially);
+- **tools**: decisions are matched to calls by position (never by id) and must name the
+  same tool and id, or the call is blocked. One `ToolMessage` per call, in call order. Allowed calls run (sequentially);
   any exception, including MCP's `ToolException`, becomes `status="error"`. Denied or
   rejected calls get `status="error"`, `"Blocked by policy: <reason>"`, so the model can explain.
 
@@ -35,6 +38,8 @@ START → agent ──(tool calls?)──▶ policy ──(any require_approval?
   (`test_resume_on_new_graph_instance`, the restart case).
 
 ## What surprised us
+- Keying decisions by `tool_call_id` was a bypass: a deny and an allow sharing id `"x"` let
+  the denied bind run, and one "yes" approved every call with that id. Fixed by the rules above.
 - `interrupt()` now takes `response_schema=`; unused here. `StateSnapshot` has `.interrupts`
   (no need to dig through `.tasks`), and `ainvoke` returns `"__interrupt__"` in its output.
 - `StructuredTool` is a pydantic model, so test fakes can't set ad-hoc attributes;
